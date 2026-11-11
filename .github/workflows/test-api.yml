@@ -1,10 +1,10 @@
-name: KungFu Pandas API Test
+name: KungFu Pandas Data Sync
 
 on:
   workflow_dispatch:
 
 jobs:
-  test-api:
+  sync:
     runs-on: ubuntu-latest
 
     steps:
@@ -14,10 +14,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install FC27 API library
-        run: pip install fc-clubs-api
+      - name: Install dependencies
+        run: |
+          pip install fc-clubs-api requests
 
-      - name: Test EA connection
-        run: python test_connection.py
+      - name: Import FC27 statistics
+        env:
+          GOOGLE_WEBHOOK_URL: ${{ secrets.GOOGLE_WEBHOOK_URL }}
+          WEBHOOK_TOKEN: ${{ secrets.WEBHOOK_TOKEN }}
+        run: python sync_to_sheets.py
