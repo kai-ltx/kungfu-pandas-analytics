@@ -3,6 +3,19 @@ name: KungFu Pandas Data Sync
 on:
   workflow_dispatch:
 
+  schedule:
+    # Evening imports (UK time)
+    - cron: '0 17,19,21,23 * * *'
+      timezone: 'Europe/London'
+
+    # Overnight imports (UK time)
+    - cron: '0 1,2 * * *'
+      timezone: 'Europe/London'
+
+concurrency:
+  group: kungfu-pandas-sync
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -14,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
