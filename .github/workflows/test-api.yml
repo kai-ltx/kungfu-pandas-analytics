@@ -3,23 +3,64 @@ name: KungFu Pandas Data Sync
 on:
   workflow_dispatch:
 
+  schedule:
+    # Candidate UTC hours covering UK evening and overnight.
+    # The timezone check below skips unwanted hours.
+    - cron: '0 0,1,2,16,17,18,19,20,21,22,23 * * *'
+
+concurrency:
+  group: kungfu-pandas-sync
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check UK playing-hours schedule
+        id: timecheck
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          hour = datetime.now(
+              ZoneInfo("Europe/London")
+          ).hour
+
+          allowed = {17, 19, 21, 23, 1, 2}
+
+          run = (
+              os.environ["EVENT_NAME"] == "workflow_dispatch"
+              or hour in allowed
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"run={str(run).lower()}\n")
+
+          print(f"London hour: {hour}")
+          print(f"Run importer: {run}")
+          PY
+
       - name: Checkout repository
+        if: steps.timecheck.outputs.run == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: steps.timecheck.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
+        if: steps.timecheck.outputs.run == 'true'
         run: pip install fc-clubs-api requests
 
       - name: Sync all three clubs
+        if: steps.timecheck.outputs.run == 'true'
         env:
           GOOGLE_WEBHOOK_URL: ${{ secrets.GOOGLE_WEBHOOK_URL }}
           WEBHOOK_TOKEN: ${{ secrets.WEBHOOK_TOKEN }}
