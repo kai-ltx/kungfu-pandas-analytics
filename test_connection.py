@@ -1,45 +1,29 @@
 from fc_clubs_api import FC27API
 
-CLUB_ID = 454058
+api = FC27API(timezone="Europe/London")
 
-print("🐼 KungFu Pandas FC 27 Analytics")
-print("Connecting to EA...")
+CLUBS = {
+    454058: "KungFu Pandas",
+    451080: "Bamboo Shoots",
+    413965: "Torquay"
+}
 
-try:
-    api = FC27API(timezone="Europe/London")
+for club_id, club_name in CLUBS.items():
 
-    # Club information
-    club = api.get_club_details(CLUB_ID)
-    print("\n✅ CLUB INFORMATION")
-    print(club)
+    print(f"\n🐼 {club_name}")
 
-    # Recent matches
-    matches = api.get_club_matches(CLUB_ID)
-
-    print("\n✅ RECENT MATCHES")
-    print(f"Matches retrieved: {len(matches)}")
-
-    for match in matches[:3]:
-        print(match)
-
-    # Player statistics including decoded match events
-    players = api.get_match_players(
-        CLUB_ID,
-        include_events=True
+    members = api.get_member_stats(
+        club_id,
+        all_columns=True
     )
 
-    print("\n✅ PLAYER STATISTICS")
-    print(f"Player-match records: {len(players)}")
-
-    if players:
-        print("\nAvailable statistics:")
-        print(list(players[0].keys()))
-
-        print("\nExample player:")
-        print(players[0])
-
-    print("\n🐼 CONNECTION TEST COMPLETE!")
-
-except Exception as error:
-    print(f"\n❌ ERROR: {error}")
-    raise
+    for player in members:
+        print({
+            "name": player.get("name"),
+            "proName": player.get("proName"),
+            "proOverall": player.get("proOverall"),
+            "proPos": player.get("proPos"),
+            "proHeight": player.get("proHeight"),
+            "proNationality": player.get("proNationality"),
+            "proStyle": player.get("proStyle")
+        })
