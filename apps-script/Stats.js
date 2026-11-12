@@ -146,20 +146,21 @@ var PandaStats = (function () {
     m("forwardPassAccuracy", "Forward-pass accuracy", "passing", "ratio",
       { numerator: ["passesCompletedForward"],
         denominator: ["passesCompletedForward", "passesFailedForward"] },
-      "event", "high", true,
+      "event", "medium", true,
       "Completed forward passes as a share of forward pass attempts.",
-      { minAttempts: 15, shrinkage: 8 }),
+      { minAttempts: 15, shrinkage: 8,
+        overlap: "Reads high: direction events cover ~98% of completed but only ~78% of failed passes (community research)." }),
     m("forwardPassShare", "Forward-pass share", "passing", "ratio",
       { numerator: ["passesCompletedForward", "passesFailedForward"],
         denominator: PASS_DIRECTION_FIELDS },
-      "event", "high", null,
+      "event", "medium", null,
       "Share of pass attempts with a known direction that were played forward.",
       { minAttempts: 30,
-        overlap: "Passes without a direction event are excluded from both sides." }),
+        overlap: "Passes without a direction event are excluded from both sides; failed directions are under-recorded." }),
     m("backwardPassShare", "Backward-pass share", "passing", "ratio",
       { numerator: ["passesCompletedBackward", "passesFailedBackward"],
         denominator: PASS_DIRECTION_FIELDS },
-      "event", "high", null,
+      "event", "medium", null,
       "Share of pass attempts with a known direction that were played backward. Context, not a fault: compare with positional peers.",
       { minAttempts: 30 }),
     m("shortPassAccuracy", "Short-pass accuracy", "passing", "ratio",
@@ -560,16 +561,16 @@ var PandaStats = (function () {
 
   // Per-appearance weights by the position group actually played in that
   // match. Only verified/high-confidence metrics; no EA rating, no
-  // experimental events, no overlapping counters within one role.
+  // experimental events, and no source field used by two components of the
+  // same role (enforced by tests).
   const ROLE_WEIGHTS = {
-    ATT: { goals: 3, assists: 2, conversion: 1.5, shotAccuracy: 1,
-           dribblesCompleted: 1, highRecoveries: 1, passAccuracy: 1 },
-    MID: { passAccuracy: 2, forwardPassesCompleted: 2, forwardPassAccuracy: 1,
-           assists: 1.5, goals: 1, throughPasses: 1, interceptions: 1,
-           tacklesWon: 1, possessionLost: 1 },
-    DEF: { interceptions: 2, defensiveThirdLosses: 2, tacklesWon: 1.5,
-           tackleSuccess: 1.5, passAccuracy: 1.5, aerialDuelsWonDefending: 1,
-           crossesBlocked: 0.5, outOfPosition: 1 },
+    ATT: { goals: 3, assists: 2, shotAccuracy: 1.5, dribblesCompleted: 1,
+           highRecoveries: 1, passAccuracy: 1 },
+    MID: { passAccuracy: 2, forwardPassesCompleted: 2, assists: 1.5, goals: 1,
+           throughPasses: 1, interceptions: 1, tacklesWon: 1, possessionLost: 1 },
+    DEF: { interceptions: 2, defensiveThirdLosses: 2, tackleSuccess: 2,
+           passAccuracy: 1.5, aerialDuelsWonDefending: 1, crossesBlocked: 0.5,
+           outOfPosition: 1 },
     GK: { saves: 2, goalsConceded: 2, passAccuracy: 1 }
   };
 

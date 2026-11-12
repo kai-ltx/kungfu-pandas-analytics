@@ -66,6 +66,26 @@ test("role weights use only scoreable metrics without known overlaps", () => {
   });
 });
 
+test("no source field feeds two components of the same role", () => {
+  Object.entries(S.ROLE_WEIGHTS).forEach(([group, weights]) => {
+    const owner = {};
+    Object.keys(weights).forEach(key => {
+      S.requiredFields(S.getMetric(key)).forEach(field => {
+        assert.ok(!owner[field], `${group}: ${field} used by ${owner[field]} and ${key}`);
+        owner[field] = key;
+      });
+    });
+  });
+});
+
+test("role weights only use high or verified confidence metrics", () => {
+  Object.values(S.ROLE_WEIGHTS).forEach(weights => {
+    Object.keys(weights).forEach(key => {
+      assert.ok(["verified", "high"].includes(S.getMetric(key).confidence), key);
+    });
+  });
+});
+
 test("lower-is-better score metrics have readable strength/weakness labels", () => {
   const used = new Set(Object.values(S.ROLE_WEIGHTS).flatMap(w => Object.keys(w)));
   used.forEach(key => {

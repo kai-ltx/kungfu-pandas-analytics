@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+from fc_clubs_api.assets import club_crest_url
 from fc_clubs_api.events import EVENT_STATS, parse_event_aggregates
 
 from .config import EA_MATCH_TYPE_CODES, TIMEZONE
@@ -162,6 +163,17 @@ def _result(us: Mapping[str, Any], goals: int, against: int) -> str:
     return "draw"
 
 
+def _crest(club: Mapping[str, Any]) -> str:
+    details = club.get("details") or {}
+    kit = details.get("customKit") or {}
+    return club_crest_url(
+        team=club.get("TEAM"),
+        team_id=details.get("teamId"),
+        crest_asset_id=kit.get("crestAssetId"),
+        selected_kit_type=kit.get("selectedKitType"),
+    )
+
+
 def normalize_match(raw: Mapping[str, Any], club_id: Any, match_type: str) -> Dict[str, Any]:
     """One match row seen from ``club_id``'s side."""
     match_id = str(raw.get("matchId") or "").strip()
@@ -205,6 +217,8 @@ def normalize_match(raw: Mapping[str, Any], club_id: Any, match_type: str) -> Di
         "goalsAgainst": against,
         "result": _result(us, goals, against),
         "dnf": dnf,
+        "crestUrl": _crest(us),
+        "opponentCrestUrl": _crest(them),
         "dataQualityFlags": ";".join(flags),
     }
 
