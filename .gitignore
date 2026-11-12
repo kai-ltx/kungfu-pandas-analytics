@@ -28,3 +28,4 @@ __pycache__/
 
 # Raw EA API samples (contain gamertags); sanitised fixtures live in tests/fixtures
 samples/
+preview/

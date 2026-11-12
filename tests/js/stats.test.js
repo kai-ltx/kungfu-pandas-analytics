@@ -439,6 +439,22 @@ test("BST late-night match belongs to the London day, not UTC", () => {
   assert.equal(S.monthKey(new Date("2026-09-30T23:30:00Z")), "2026-10");
 });
 
+test("period bounds use London midnight across DST", () => {
+  // Week of Mon 26 Oct 2026 (clocks went back Sun 25 Oct): GMT midnight.
+  const w = S.periodBounds("2026-10-26", "week");
+  assert.equal(w.start.toISOString(), "2026-10-26T00:00:00.000Z");
+  assert.equal(w.end.toISOString(), "2026-11-02T00:00:00.000Z");
+  // Week of Mon 19 Oct 2026 starts in BST (23:00 UTC Sunday), ends in GMT.
+  const b = S.periodBounds("2026-10-19", "week");
+  assert.equal(b.start.toISOString(), "2026-10-18T23:00:00.000Z");
+  assert.equal(b.end.toISOString(), "2026-10-26T00:00:00.000Z");
+  const m = S.periodBounds("2026-12", "month");
+  assert.equal(m.start.toISOString(), "2026-12-01T00:00:00.000Z");
+  assert.equal(m.end.toISOString(), "2027-01-01T00:00:00.000Z");
+  assert.equal(S.previousPeriodKey("2026-11-02", "week"), "2026-10-26");
+  assert.equal(S.previousPeriodKey("2026-01", "month"), "2025-12");
+});
+
 test("period completeness and percentage-point change", () => {
   const now = new Date("2026-11-12T10:00:00Z");
   assert.equal(S.isPeriodComplete("2026-11-02", "week", now), true);

@@ -88,6 +88,7 @@ function appsScriptGlobals(options) {
   const cache = new Map();
   return {
     ss,
+    cache,
     globals: {
       SpreadsheetApp: { openById: () => ss },
       LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },

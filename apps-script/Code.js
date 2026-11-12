@@ -24,6 +24,8 @@ const CONFIG = {
 function doPost(e) {
 
   let lock;
+  let ss = null;
+  let clubName = "";
 
   try {
 
@@ -41,6 +43,8 @@ function doPost(e) {
       throw new Error("Unauthorized");
     }
 
+    ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
+
     const clubId = String(data.clubId);
 
     if (!Object.prototype.hasOwnProperty.call(CONFIG.clubs, clubId)) {
@@ -54,9 +58,7 @@ function doPost(e) {
     lock = LockService.getScriptLock();
     lock.waitLock(30000);
 
-    const ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
-
-    const clubName = CONFIG.clubs[clubId];
+    clubName = CONFIG.clubs[clubId];
 
     // Add club identifiers to all incoming records.
     const matches = data.matches.map(record => ({
@@ -86,28 +88,13 @@ function doPost(e) {
       ["clubId", "matchId", "playerId"]
     );
 
-    // Log the synchronization.
-    let logSheet = ss.getSheetByName("Sync_Log");
+    logSync_(ss, clubName, matchesAdded, playersAdded, "ok");
 
-    if (!logSheet) {
-      logSheet = ss.insertSheet("Sync_Log");
+    if (matchesAdded || playersAdded) {
+      try {
+        invalidateDashboardCache_();
+      } catch (_) {}
     }
-
-    if (logSheet.getLastRow() === 0) {
-      logSheet.appendRow([
-        "Timestamp",
-        "Club",
-        "Matches Added",
-        "Player Records Added"
-      ]);
-    }
-
-    logSheet.appendRow([
-      new Date(),
-      clubName,
-      matchesAdded,
-      playersAdded
-    ]);
 
     return jsonResponse_({
       success: true,
@@ -119,6 +106,14 @@ function doPost(e) {
   } catch (error) {
 
     console.error(error);
+
+    // ss is only set after the token check, so unauthenticated requests
+    // can never write to the sheet.
+    if (ss) {
+      try {
+        logSync_(ss, clubName, 0, 0, "error: " + String(error.message).slice(0, 200));
+      } catch (_) {}
+    }
 
     return jsonResponse_({
       success: false,
@@ -134,6 +129,41 @@ function doPost(e) {
     }
 
   }
+}
+
+
+// ==========================================
+// SYNC LOG
+// ==========================================
+
+function logSync_(ss, clubName, matchesAdded, playersAdded, status) {
+
+  let logSheet = ss.getSheetByName("Sync_Log");
+
+  if (!logSheet) {
+    logSheet = ss.insertSheet("Sync_Log");
+  }
+
+  if (logSheet.getLastRow() === 0) {
+    logSheet.appendRow([
+      "Timestamp",
+      "Club",
+      "Matches Added",
+      "Player Records Added",
+      "Status"
+    ]);
+  } else if (logSheet.getLastColumn() < 5) {
+    logSheet.getRange(1, 5).setValue("Status");
+  }
+
+  logSheet.appendRow([
+    new Date(),
+    clubName,
+    matchesAdded,
+    playersAdded,
+    status
+  ]);
+
 }
 
 

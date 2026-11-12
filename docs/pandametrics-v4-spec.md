@@ -40,9 +40,29 @@ Pure JavaScript shared by Apps Script, the browser and Node tests. Exposed as on
 - **Ranking**: competition ranking (1, 2, 2, 4), tie-break by sample size then name.
 - **Panda Score (v1)**: per appearance, percentile against same-group appearances for each role-weighted metric (inverted when lower is better); counts per 90 with a 20-minute floor; ratios shrunk towards the role's pooled rate; ≥60% weight coverage required; groups with <10 appearances fall back to all appearances. Player score = mean of appearance scores, with per-group breakdown, strengths and weaknesses. EA rating and experimental events are excluded.
 
-## 4. Dashboard (Phase 3+)
+## 4. Dashboard
 
-Six sections: Overview/Panda Den, Rankings, Evolution, Panda Lab, Squad & Builds, Awards. Global filters: club, period, match type, position group, players, minimum matches/attempts. Every number shows its denominator and sample size; experimental metrics carry a badge; raw EA field names are never shown.
+Six sections: Panda Den, Rankings, Evolution, Panda Lab, Squad & Builds, Awards.
+
+- **Global filters:** club, period (all / last 28 days / this or last week / this or last month, Europe/London), match type (official / league / playoffs), position group, minimum matches.
+- **Display rules:**
+  - every number shows its denominator or sample size and a coverage chip;
+  - experimental and caveated metrics carry a badge;
+  - raw EA field names are never shown.
+- **Architecture:**
+  - `getDashboardData` returns minimal rows with opaque player ids;
+  - `client/Insights.js` builds every view model in the browser on top of `PandaStats`;
+  - `client/App.js` renders them;
+  - both are inlined into `ClientLib.html` by `tools/build_client.js`.
+- **Categories:** six non-redundant display categories (Passing, Attacking, Creativity, Defending, Possession, Decisions). No metric appears twice (test-enforced).
+- **Awards:**
+  - Weekly Bamboo uses the last complete Monday–Sunday week with matches (2+ matches to qualify);
+  - the filter-period awards use the minimum-matches filter;
+  - shame awards measure excess over what positional peers produce in the same role mix;
+  - Shotgun Target is the lowest eligible Panda Score.
+- **Evolution:** contiguous weeks or months, matches per period, hollow in-progress points, accuracy changes in percentage points, movers from completed periods with 3+ matches.
+
+Details: `docs/pandametrics-score-review.md`, `docs/pandametrics-data-quality.md`, `docs/pandametrics-security.md`.
 
 ## 5. Security requirements
 

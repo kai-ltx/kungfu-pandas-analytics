@@ -1,36 +1,27 @@
 "use strict";
 
 // Replays the V2 importer's payloads, then V4 payloads, through the real
-// webhook (Code.js) into a fake spreadsheet, and reads the result with the
-// currently deployed V3 dashboard backend (Dashboard.js at main).
+// webhook (Code.js) into a fake spreadsheet, and reads the result with both
+// the deployed V3 dashboard backend and the V4 one.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const { execFileSync } = require("node:child_process");
-const { loadAppsScript, APPS_SCRIPT } = require("./load");
+const { loadAppsScript } = require("./load");
 const { appsScriptGlobals, post } = require("./fakes");
 
 const PAYLOADS = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "fixtures", "payloads.json"), "utf8"));
 const TOKEN = "test-token";
 
-function productionDashboardSource() {
-  // The V3 backend as deployed (main), independent of later branch edits.
-  try {
-    return execFileSync("git", ["show", "main:apps-script/Dashboard.js"], {
-      cwd: path.join(APPS_SCRIPT, ".."), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"]
-    });
-  } catch (_) {
-    return fs.readFileSync(path.join(APPS_SCRIPT, "Dashboard.js"), "utf8");
-  }
-}
+// Frozen copy of the deployed V3.1 backend (clasp clone, commit 44eefdc).
+const PRODUCTION_DASHBOARD = path.join(__dirname, "..", "fixtures", "production", "Dashboard.v3.js");
 
-function setup() {
+function setup(files) {
   const env = appsScriptGlobals({ properties: { WEBHOOK_TOKEN: TOKEN } });
-  const ctx = loadAppsScript(["Code.js"], env.globals);
-  return { ctx, ss: env.ss };
+  const ctx = loadAppsScript(files || ["Code.js"], env.globals);
+  return { ctx, ss: env.ss, env };
 }
 
 function keysOf(sheet, keyFields) {
@@ -148,7 +139,7 @@ test("deployed V3 dashboard still reads mixed V2 + V4 rows", () => {
   const { ctx, ss } = setup();
   importAll(ctx, "v2");
   importAll(ctx, "v4");
-  vm.runInContext(productionDashboardSource(), ctx, { filename: "Dashboard.js@main" });
+  vm.runInContext(fs.readFileSync(PRODUCTION_DASHBOARD, "utf8"), ctx, { filename: "Dashboard.v3.js" });
   const data = ctx.getDashboardData();
   assert.equal(data.ok, true);
   const expectedMatches = Object.values(PAYLOADS.v4).reduce((a, p) => a + p.matches.length, 0);
@@ -156,4 +147,91 @@ test("deployed V3 dashboard still reads mixed V2 + V4 rows", () => {
   assert.ok(data.matches.some(m => m.matchType === "playoffMatch"));
   const keys = data.records.map(r => r.clubId + "|" + r.matchId + "|" + r.playerId);
   assert.equal(new Set(keys).size, keys.length);
+});
+
+// ------------------------------------------------------------ V4 backend
+
+const V4_FILES = ["Stats.js", "Code.js", "Dashboard.js"];
+
+function realPlayerIds() {
+  const ids = new Set();
+  ["v2", "v4"].forEach(v => Object.values(PAYLOADS[v]).forEach(p => p.players.forEach(r => ids.add(String(r.playerId)))));
+  return ids;
+}
+
+test("V4 dashboard reads mixed V2 + V4 rows without exposing EA player ids", () => {
+  const { ctx } = setup(V4_FILES);
+  importAll(ctx, "v2");
+  importAll(ctx, "v4");
+  const data = ctx.getDashboardData();
+  assert.equal(data.ok, true);
+
+  const expectedMatches = Object.values(PAYLOADS.v4).reduce((a, p) => a + p.matches.length, 0);
+  assert.equal(data.matches.length, expectedMatches);
+  const keys = data.appearances.map(r => r.clubId + "|" + r.matchId + "|" + r.playerId);
+  assert.equal(new Set(keys).size, keys.length, "duplicate appearances");
+
+  const json = JSON.stringify(data);
+  realPlayerIds().forEach(id => assert.ok(!json.includes('"' + id + '"'), "EA player id leaked"));
+  assert.ok(!("rawEvents" in data.appearances[0]), "raw events must not be sent to the browser");
+  data.appearances.forEach(r => {
+    assert.match(r.playerId, /^p\d+$/);
+    assert.ok(Number.isInteger(r.timestampUnix), "timestampUnix");
+    assert.ok(["leagueMatch", "playoffMatch"].includes(r.matchType), "legacy rows get a match type");
+  });
+  assert.ok(data.appearances.some(r => r.matchType === "playoffMatch"));
+  assert.ok(data.appearances.some(r => r.eventCoverage === null), "V2 rows have no coverage flag");
+  assert.ok(data.appearances.every(r => r.positionGroup === null || ["ATT", "MID", "DEF", "GK"].includes(r.positionGroup)));
+});
+
+test("V4 dashboard data feeds PandaInsights end to end", () => {
+  const { ctx } = setup(V4_FILES);
+  importAll(ctx, "v2");
+  importAll(ctx, "v4");
+  const data = ctx.getDashboardData();
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "..", "client", "Insights.js"), "utf8"), ctx);
+  const prepared = vm.runInContext("PandaInsights.prepare", ctx)(JSON.parse(JSON.stringify(data)));
+  const model = vm.runInContext("PandaInsights.build", ctx)(prepared, {}, new Date(), null);
+  assert.ok(model.overview.matches > 0);
+  assert.ok(model.rankings.scores.qualified.length > 0);
+  assert.equal(model.overview.coverage.appearances + model.overview.coverage.didNotPlay, model.overview.coverage.rows);
+});
+
+test("Sync_Log records status and the dashboard reports the last successful sync", () => {
+  const { ctx, ss } = setup(V4_FILES);
+  importAll(ctx, "v4");
+  const log = ss.getSheetByName("Sync_Log");
+  assert.deepEqual([...log.data[0].slice(0, 5)], ["Timestamp", "Club", "Matches Added", "Player Records Added", "Status"]);
+  assert.ok(log.data.slice(1).every(r => r[4] === "ok"));
+  const data = ctx.getDashboardData();
+  assert.ok(data.sync.lastSync);
+  assert.equal(data.sync.recent.length, Object.keys(PAYLOADS.v4).length);
+  assert.ok(data.sync.recent.every(r => r.status === "ok"));
+});
+
+test("failed authorised imports are logged; unauthorised ones are not", () => {
+  const { ctx, ss } = setup(V4_FILES);
+  post(ctx, { token: "nope", clubId: "454058", matches: [], players: [] });
+  assert.equal(ss.getSheetByName("Sync_Log"), null, "anonymous callers must not be able to write to the log");
+
+  const res = post(ctx, { token: TOKEN, clubId: "454058", matches: "not-an-array", players: [] });
+  assert.equal(res.success, false);
+  const log = ss.getSheetByName("Sync_Log");
+  assert.ok(log, "authorised failure should be logged");
+  assert.match(String(log.data[log.data.length - 1][4]), /^error/);
+});
+
+test("dashboard cache is chunked and invalidated by new imports", () => {
+  const { ctx, env } = setup(V4_FILES);
+  importAll(ctx, "v2");
+  vm.runInContext("PANDA_DASHBOARD.cacheChunk = 5000", ctx);
+  const first = ctx.getDashboardData();
+  const count = Number(env.cache.get("dashboard-v4:n"));
+  assert.ok(count > 1, "payload should span several chunks");
+  assert.equal(JSON.stringify(ctx.getDashboardData()), JSON.stringify(first), "served from cache");
+
+  importAll(ctx, "v4");
+  assert.equal(env.cache.has("dashboard-v4:n"), false, "import should invalidate the cache");
+  const fresh = ctx.getDashboardData();
+  assert.ok(fresh.matches.length > first.matches.length, "new playoff matches visible after import");
 });

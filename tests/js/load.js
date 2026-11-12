@@ -22,9 +22,16 @@ function loadStats() {
   return loadAppsScript(["Stats.js"]).PandaStats;
 }
 
+function loadInsights() {
+  const context = loadAppsScript(["Stats.js"]);
+  const code = fs.readFileSync(path.join(__dirname, "..", "..", "client", "Insights.js"), "utf8");
+  vm.runInContext(code, context, { filename: "Insights.js" });
+  return { S: context.PandaStats, I: context.PandaInsights, context };
+}
+
 function loadFixture() {
   const file = path.join(__dirname, "..", "fixtures", "appearances.json");
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
-module.exports = { APPS_SCRIPT, loadAppsScript, loadStats, loadFixture };
+module.exports = { APPS_SCRIPT, loadAppsScript, loadStats, loadInsights, loadFixture };

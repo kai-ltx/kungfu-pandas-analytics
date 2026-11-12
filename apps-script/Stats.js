@@ -736,11 +736,20 @@ var PandaStats = (function () {
 
   // ------------------------------------------------------------- periods
 
-  const londonFormatter = new Intl.DateTimeFormat("en-GB", {
-    timeZone: TIMEZONE,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", hour12: false, weekday: "short"
-  });
+  // Created on first use: every Apps Script request (including the webhook)
+  // evaluates this file, so nothing that could fail runs at load time.
+  let londonFormatter = null;
+
+  function formatter() {
+    if (!londonFormatter) {
+      londonFormatter = new Intl.DateTimeFormat("en-GB", {
+        timeZone: TIMEZONE,
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", hour12: false, weekday: "short"
+      });
+    }
+    return londonFormatter;
+  }
 
   const WEEKDAYS = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
 
@@ -758,7 +767,7 @@ var PandaStats = (function () {
 
   function londonParts(date) {
     const parts = {};
-    londonFormatter.formatToParts(date).forEach(p => { parts[p.type] = p.value; });
+    formatter().formatToParts(date).forEach(p => { parts[p.type] = p.value; });
     return {
       year: Number(parts.year),
       month: Number(parts.month),
@@ -792,6 +801,34 @@ var PandaStats = (function () {
   // A period is complete once "now" is in a later period.
   function isPeriodComplete(key, period, now) {
     return periodKey(now, period) > key;
+  }
+
+  // The UTC instant of 00:00 Europe/London on a civil date. London is UTC+0
+  // or UTC+1, so midnight is either 00:00 or 23:00 (previous day) UTC.
+  function londonMidnight(year, month, day) {
+    const bst = new Date(Date.UTC(year, month - 1, day) - 3600 * 1000);
+    const p = londonParts(bst);
+    if (p.day === day && p.hour === 0) return bst;
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  // [start, end) of a week ("YYYY-MM-DD" Monday) or month ("YYYY-MM") key.
+  function periodBounds(key, period) {
+    const [y, mo, d] = key.split("-").map(Number);
+    if (period === "month") {
+      const next = mo === 12 ? [y + 1, 1] : [y, mo + 1];
+      return { start: londonMidnight(y, mo, 1), end: londonMidnight(next[0], next[1], 1) };
+    }
+    const civil = new Date(Date.UTC(y, mo - 1, d + 7));
+    return {
+      start: londonMidnight(y, mo, d),
+      end: londonMidnight(civil.getUTCFullYear(), civil.getUTCMonth() + 1, civil.getUTCDate())
+    };
+  }
+
+  function previousPeriodKey(key, period) {
+    const { start } = periodBounds(key, period);
+    return periodKey(new Date(start.getTime() - 3600 * 1000), period);
   }
 
   function percentagePointChange(before, after) {
@@ -837,6 +874,9 @@ var PandaStats = (function () {
     monthKey,
     periodKey,
     isPeriodComplete,
+    londonMidnight,
+    periodBounds,
+    previousPeriodKey,
     percentagePointChange
   };
 })();
