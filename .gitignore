@@ -1,0 +1,30 @@
+# clasp OAuth credentials (global file is ~/.clasprc.json; never copy it into the repo)
+.clasprc.json
+**/.clasprc.json
+
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+**/credentials.json
+client_secret*.json
+**/client_secret*.json
+token.json
+**/token.json
+service-account*.json
+**/service-account*.json
+*-credentials.json
+
+# OS junk
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Raw EA API samples (contain gamertags); sanitised fixtures live in tests/fixtures
+samples/

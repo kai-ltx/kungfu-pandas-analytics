@@ -1,173 +1,110 @@
 # ==========================================
-# PANDAMETRICS V2 - MULTI-CLUB DATA SYNC
+# PANDAMETRICS V4 - MULTI-CLUB DATA SYNC
 # ==========================================
+#
+# Fetches official matches (league + playoffs) for every club, normalises
+# them with pandametrics.ingest and posts them to the Apps Script webhook.
+# The payload shape ({token, clubId, matches, players}) is unchanged from V2,
+# so the deployed webhook keeps working; new V4 columns are additive.
 
-import os
 import json
-import requests
+import os
+import sys
 
-from datetime import datetime, date
+import requests
 from fc_clubs_api import FC27API
 
-
-# ==========================================
-# CONFIGURATION
-# ==========================================
-
-CLUBS = {
-    454058: "KungFu Pandas",
-    451080: "Bamboo Shoots",
-    413965: "Torquay"
-}
-
-WEBHOOK_URL = os.environ["GOOGLE_WEBHOOK_URL"]
-WEBHOOK_TOKEN = os.environ["WEBHOOK_TOKEN"]
+from pandametrics.config import CLUBS, OFFICIAL_MATCH_TYPES, TIMEZONE
+from pandametrics.ingest import collect_club, quality_summary
 
 
-# ==========================================
-# HELPERS
-# ==========================================
-
-def serialize(value):
-
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-
-    if hasattr(value, "item"):
-        return value.item()
-
-    raise TypeError(
-        f"Cannot serialize {type(value).__name__}"
-    )
-
-
-def to_records(data):
-
-    if hasattr(data, "to_dict"):
-        return data.to_dict(orient="records")
-
-    if isinstance(data, list):
-        return data
-
-    raise TypeError(
-        f"Unexpected data format: {type(data)}"
-    )
-
-
-# ==========================================
-# CONNECT TO EA
-# ==========================================
-
-print("🐼 PandaMetrics V2")
-print("Connecting to EA FC27 API...")
-
-api = FC27API(timezone="Europe/London")
-
-total_matches = 0
-total_players = 0
-
-
-# ==========================================
-# SYNC ALL THREE CLUBS
-# ==========================================
-
-for club_id, club_name in CLUBS.items():
-
-    print("\n================================")
-    print(f"🐼 Syncing {club_name}")
-    print(f"Club ID: {club_id}")
-    print("================================")
-
-    # Retrieve recent matches.
-    matches = to_records(
-        api.get_club_matches(club_id)
-    )
-
-    # Retrieve detailed player statistics.
-    players = to_records(
-        api.get_match_players(
-            club_id,
-            include_events=True
-        )
-    )
-
-    print(f"Matches retrieved: {len(matches)}")
-    print(f"Player records retrieved: {len(players)}")
-
-    # Validate identifiers.
-    for record in matches:
-
-        if not record.get("matchId"):
-            raise ValueError(
-                f"{club_name}: Missing matchId. "
-                f"Fields: {list(record.keys())}"
-            )
-
-    for record in players:
-
-        if (
-            not record.get("matchId")
-            or not record.get("playerId")
-        ):
-            raise ValueError(
-                f"{club_name}: Missing player identifiers. "
-                f"Fields: {list(record.keys())}"
-            )
-
-    # Prepare webhook payload.
+def post_club(url, token, club_id, data):
     payload = {
-        "token": WEBHOOK_TOKEN,
+        "token": token,
         "clubId": str(club_id),
-        "matches": matches,
-        "players": players
+        "matches": data["matches"],
+        "players": data["players"],
     }
 
-    # Send to Google Sheets.
-    print("Sending data to Google Sheets...")
-
     response = requests.post(
-        WEBHOOK_URL,
-        data=json.dumps(
-            payload,
-            default=serialize
-        ),
-        headers={
-            "Content-Type": "application/json"
-        },
-        timeout=60
+        url,
+        data=json.dumps(payload),
+        headers={"Content-Type": "application/json"},
+        timeout=60,
     )
-
     response.raise_for_status()
 
     result = response.json()
-
     if not result.get("success"):
-        raise RuntimeError(
-            f"{club_name}: "
-            f"{result.get('error', 'Unknown error')}"
-        )
-
-    matches_added = result.get("matchesAdded", 0)
-    players_added = result.get("playersAdded", 0)
-
-    print(f"✅ {club_name} imported!")
-    print(f"New matches: {matches_added}")
-    print(f"New player records: {players_added}")
-
-    total_matches += matches_added
-    total_players += players_added
+        raise RuntimeError(result.get("error", "Unknown error"))
+    return result
 
 
-# ==========================================
-# SUMMARY
-# ==========================================
+def describe_error(error):
+    # requests includes the full URL in HTTP error text; the webhook URL is a secret.
+    if isinstance(error, requests.HTTPError) and error.response is not None:
+        return f"HTTPError: status {error.response.status_code}"
+    if isinstance(error, requests.RequestException):
+        return type(error).__name__
+    return f"{type(error).__name__}: {error}"
 
-print("\n================================")
-print("🐼 ALL CLUBS SYNCED")
-print("================================")
 
-print(f"Clubs processed: {len(CLUBS)}")
-print(f"New matches: {total_matches}")
-print(f"New player records: {total_players}")
+def main():
+    webhook_url = os.environ["GOOGLE_WEBHOOK_URL"]
+    webhook_token = os.environ["WEBHOOK_TOKEN"]
 
-print("PandaMetrics database updated!")
+    print("🐼 PandaMetrics V4")
+    print("Connecting to EA FC27 API...")
+
+    api = FC27API(timezone=TIMEZONE, output="raw", timeout=20)
+
+    def fetch(club_id, match_type):
+        return api.get_club_matches(club_id, match_type=match_type, count=10)
+
+    total_matches = 0
+    total_players = 0
+    failures = []
+
+    for club_id, club_name in CLUBS.items():
+        print("\n================================")
+        print(f"🐼 Syncing {club_name} ({club_id})")
+        print("================================")
+
+        try:
+            data = collect_club(fetch, club_id, OFFICIAL_MATCH_TYPES)
+
+            for match_type, count in data["perType"].items():
+                print(f"{match_type}: {count} matches")
+            print(f"Player appearances: {len(data['players'])}")
+            if data["duplicatesDropped"]:
+                print(f"Duplicates dropped: {data['duplicatesDropped']}")
+            flags = quality_summary(data["players"])
+            if flags:
+                print(f"Data-quality flags: {flags}")
+
+            result = post_club(webhook_url, webhook_token, club_id, data)
+        except Exception as error:  # one club failing must not block the others
+            print(f"❌ {club_name}: {describe_error(error)}")
+            failures.append(club_name)
+            continue
+
+        matches_added = result.get("matchesAdded", 0)
+        players_added = result.get("playersAdded", 0)
+        print(f"✅ {club_name}: {matches_added} new matches, {players_added} new player records")
+        total_matches += matches_added
+        total_players += players_added
+
+    print("\n================================")
+    print("🐼 SYNC SUMMARY")
+    print("================================")
+    print(f"Clubs processed: {len(CLUBS) - len(failures)}/{len(CLUBS)}")
+    print(f"New matches: {total_matches}")
+    print(f"New player records: {total_players}")
+
+    if failures:
+        print(f"Failed clubs: {', '.join(failures)}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

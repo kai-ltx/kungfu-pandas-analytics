@@ -4,13 +4,17 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Candidate UTC hours covering UK evening and overnight.
-    # The timezone check below skips unwanted hours.
-    - cron: '0 0,1,2,16,17,18,19,20,21,22,23 * * *'
+    # Candidate UTC hours covering 17:00-02:59 Europe/London in both GMT and
+    # BST. The timezone check below skips hours outside that window.
+    # Minute 7 avoids the top-of-hour load where GitHub delays/drops runs.
+    - cron: '7 0,1,2,16,17,18,19,20,21,22,23 * * *'
 
 concurrency:
   group: kungfu-pandas-sync
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   sync:
@@ -31,7 +35,7 @@ jobs:
               ZoneInfo("Europe/London")
           ).hour
 
-          allowed = {17, 19, 21, 23, 1, 2}
+          allowed = {17, 18, 19, 20, 21, 22, 23, 0, 1, 2}
 
           run = (
               os.environ["EVENT_NAME"] == "workflow_dispatch"
@@ -48,6 +52,8 @@ jobs:
       - name: Checkout repository
         if: steps.timecheck.outputs.run == 'true'
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         if: steps.timecheck.outputs.run == 'true'
@@ -57,7 +63,11 @@ jobs:
 
       - name: Install dependencies
         if: steps.timecheck.outputs.run == 'true'
-        run: pip install fc-clubs-api requests
+        run: pip install -r requirements-dev.txt
+
+      - name: Run data-integrity tests
+        if: steps.timecheck.outputs.run == 'true'
+        run: python -m pytest -q
 
       - name: Sync all three clubs
         if: steps.timecheck.outputs.run == 'true'

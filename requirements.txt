@@ -1,0 +1,2 @@
+fc-clubs-api==0.3.0
+requests==2.34.2
