@@ -59,7 +59,7 @@ Investigation scripts: `tools/audit_positions.py` and `tools/fetch_samples.py`. 
 
 | Requirement | How it is met | Test |
 |---|---|---|
-| **No duplicates** | The webhook dedupes on `clubId+matchId` (Matches) and `clubId+matchId+playerId` (Player_Match_Stats), comparing as strings, so numeric and text cells match. | History tests "V4 import after V2 history adds only playoff records and never duplicates" and "keys match whether the sheet stored ids as numbers or text" |
+| **No duplicates** | The webhook dedupes on `clubId+matchId` (Matches) and `clubId+matchId+playerId` (Player_Match_Stats), comparing as strings, so a legacy numeric id still matches a new text id. | History tests "V4 import after V2 history adds only playoff records and never duplicates" and "legacy numeric match ids still dedupe and are not rewritten" |
 | **No overwrites** | `saveRecords_` only appends rows; existing rows are never rewritten. | "historical rows keep their exact values after a V4 import" (cell-by-cell) |
 | **New columns are safe** | New fields (`positionGroup`, `archetypeId`, `rawEvents`, `eventCoverage`, `appearanceStatus`, `dataQualityFlags`, `matchType`, crest URLs and others) are appended to the right of the existing header. Existing column positions are unchanged, and historical rows stay blank in new columns (no back-fill). | "new V4 columns are appended and blank on historical rows" |
 | **Playoff rows** | Bamboo Shoots' 3 playoff matches (13 player rows) are the only new records when V4 runs after V2 history. League rows already present are skipped. | First history test (exact counts) |
@@ -68,3 +68,25 @@ Investigation scripts: `tools/audit_positions.py` and `tools/fetch_samples.py`. 
 | **Legacy rows readable** | The V4 dashboard fills `matchType` from the match (or `leagueMatch`), derives `positionGroup` from `position`, and re-derives zero-minute and event usability from raw fields. | "V4 dashboard reads mixed V2 + V4 rows without exposing EA player ids" |
 | **Production dashboard keeps working** | The deployed V3.1 backend (frozen copy in `tests/fixtures/production/`) still reads a sheet containing mixed V2 and V4 rows. | "deployed V3 dashboard still reads mixed V2 + V4 rows" |
 | **Bad requests write nothing** | Wrong token, unknown club or malformed payload are rejected before any data row is written. | "wrong token writes nothing", "unknown club rejected", "failed authorised imports are logged; unauthorised ones are not" |
+
+## 4. Match id precision
+
+Google Sheets stores numbers as IEEE-754 doubles. Integers above 2^53−1 (16 digits, starting at 9007199254740993) are rounded, so a later import would not recognise the match.
+
+- The importer keeps `matchId` as an exact digit string and refuses a float (`pandametrics/ingest.py` `match_id_text`). `json.dumps` therefore sends `"matchId": "9007..."` and not a JSON number.
+- The webhook writes every new match id with a leading apostrophe and sets the match-id column format to `@` (plain text). The apostrophe is not stored.
+- Cells already stored as numbers are not rewritten. Dedupe compares `String(existing)` with `String(incoming)`, so a 15-digit legacy id still matches.
+- Tests cover a 16-digit unsafe integer and a 20-digit id, including a second import that adds nothing.
+
+## 5. Historical backfill (not run)
+
+`python tools/backfill.py` plans a backfill from a **local JSON snapshot**. It does not connect to Google Sheets, and it refuses the production spreadsheet id.
+
+- **Dry-run is the default.** It writes an audit JSON of every proposed change and does not modify the snapshot.
+- **Fills blank cells only.** A non-blank cell that disagrees with incoming data is recorded as a conflict and left unchanged. Incoming rows whose key is not already in the snapshot are not inserted.
+- **Derived values** are position group (from `position`) and appearance status (from minutes, and only `did_not_play` when there are also no goals, assists or shots). Event coverage is not guessed, because old rows stored missing events as 0.
+- **`--infer-league`** fills a blank match type with `leagueMatch` and marks that change as inferred. It is off by default.
+- **Match ids** that are exact integers can be retyped as the same digit string. A float match id blocks the run.
+- **`--apply`** writes a local JSON file only, and only when the quality checks pass.
+- This was not executed against the live Sheet.
+

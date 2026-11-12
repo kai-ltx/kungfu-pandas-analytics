@@ -7,6 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 const { render } = require("./build_client");
+const { loadStats } = require("../tests/js/load");
 
 const ROOT = path.resolve(__dirname, "..");
 const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, "tests", "fixtures", "appearances.json"), "utf8"));
@@ -16,7 +17,11 @@ const data = {
   generatedAt: new Date().toISOString(),
   clubs: { "454058": "KungFu Pandas", "451080": "Bamboo Shoots", "413965": "Torquay" },
   matches: fixture.matches,
-  appearances: fixture.players.map(({ rawEvents, ...r }) => r),
+  appearances: fixture.players.map(r => {
+    const copy = Object.assign({}, r, loadStats().experimentalFields(r));
+    delete copy.rawEvents;
+    return copy;
+  }),
   sync: { lastSync: new Date().toISOString(), recent: [] }
 };
 

@@ -108,16 +108,69 @@ test("re-running the V4 import is idempotent", () => {
   assert.equal(ss.getSheetByName("Player_Match_Stats").data.length, rowsAfterFirst);
 });
 
-test("keys match whether the sheet stored ids as numbers or text", () => {
+test("legacy numeric match ids still dedupe and are not rewritten", () => {
   const { ctx, ss } = setup();
   importAll(ctx, "v2");
-  const players = ss.getSheetByName("Player_Match_Stats");
-  const headers = players.data[0];
+  const matches = ss.getSheetByName("Matches");
+  const headers = matches.data[0];
   const idCol = headers.indexOf("matchId");
-  assert.equal(typeof players.data[1][idCol], "number", "fake should store numeric text as numbers like Sheets");
-  const res = post(ctx, Object.assign({ token: TOKEN }, PAYLOADS.v4["454058"]));
-  assert.equal(res.matchesAdded, 0);
-  assert.equal(res.playersAdded, 0);
+  const clubCol = headers.indexOf("clubId");
+  const original = matches.data[1][idCol];
+  assert.equal(typeof original, "string");
+  assert.equal(String(Number(original)), original, "15-digit fixture ids are exact as numbers");
+  matches.data[1][idCol] = Number(original);
+  const before = matches.data[1].slice();
+  const clubId = String(matches.data[1][clubCol]);
+  const res = post(ctx, Object.assign({ token: TOKEN }, PAYLOADS.v4[clubId]));
+  assert.equal(res.success, true);
+  assert.equal(matches.data[1][idCol], Number(original), "legacy cell must stay a number");
+  assert.deepEqual(matches.data[1], before);
+  const copies = matches.data.slice(1).filter(r => String(r[idCol]) === original);
+  assert.equal(copies.length, 1, "legacy id must not be imported again");
+});
+
+test("16-digit and longer match ids are stored as exact text", () => {
+  const { ctx, ss } = setup(V4_FILES);
+  // 2^53+1 is the first integer JavaScript and Sheets cannot store exactly.
+  const ids = ["9007199254740993", "12345678901234567890"];
+  ids.forEach(id => assert.notEqual(String(Number(id)), id));
+
+  ids.forEach((id, i) => {
+    const res = post(ctx, {
+      token: TOKEN,
+      clubId: "454058",
+      matches: [{
+        matchId: id, timestamp: "2026-11-01T18:00:00+00:00", matchType: "leagueMatch",
+        opponentName: "Opponent", goals: 1, goalsAgainst: 0, result: "win"
+      }],
+      players: [{ matchId: id, playerId: String(100 + i), name: "P", position: "midfielder", goals: 0 }]
+    });
+    assert.equal(res.success, true);
+    assert.equal(res.matchesAdded, 1);
+    assert.equal(res.playersAdded, 1);
+  });
+
+  ["Matches", "Player_Match_Stats"].forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    const col = sheet.data[0].indexOf("matchId");
+    const stored = sheet.data.slice(1).map(r => r[col]);
+    assert.deepEqual(stored.sort(), ids.slice().sort());
+    stored.forEach(value => assert.equal(typeof value, "string"));
+    assert.ok(sheet.numberFormats.some(f => f.col === col + 1 && f.format === "@" && f.cols === 1));
+  });
+
+  const again = post(ctx, {
+    token: TOKEN,
+    clubId: "454058",
+    matches: [{ matchId: ids[0], timestamp: "2026-11-01T18:00:00+00:00", matchType: "leagueMatch" }],
+    players: [{ matchId: ids[1], playerId: "101", name: "P" }]
+  });
+  assert.equal(again.matchesAdded, 0);
+  assert.equal(again.playersAdded, 0);
+
+  const data = ctx.getDashboardData();
+  const seen = [...data.matches].map(m => String(m.matchId)).filter(id => ids.includes(id));
+  assert.deepEqual(seen.sort(), ids.slice().sort());
 });
 
 test("wrong token writes nothing", () => {

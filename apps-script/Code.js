@@ -252,18 +252,7 @@ function saveRecords_(ss, sheetName, records, keyFields) {
         return "";
       }
 
-      if (typeof value === "object") {
-        return JSON.stringify(value);
-      }
-
-      if (
-        typeof value === "string" &&
-        /^[=+\-@\t\r]/.test(value)
-      ) {
-        return "'" + value;
-      }
-
-      return value;
+      return sheetValue_(field, value);
 
     });
 
@@ -280,7 +269,53 @@ function saveRecords_(ss, sheetName, records, keyFields) {
     ).setValues(rows);
   }
 
+  // Text format for the column. This does not rewrite existing cells:
+  // a number already in the column stays a number, and dedupe compares
+  // String(existing) with String(incoming), so 15-digit legacy ids still match.
+  formatMatchIdColumn_(sheet, headers);
+
   return rows.length;
+}
+
+
+// Match ids are digit strings that can grow past 15 digits. Sheets stores
+// numbers as IEEE-754 doubles and rounds integers above 2^53-1, which would
+// make a later import look like a different match. A leading apostrophe
+// stores the id as text; Sheets does not keep the apostrophe in the value.
+function sheetValue_(field, value) {
+
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  if (field === "matchId") {
+    return "'" + String(value).trim();
+  }
+
+  if (
+    typeof value === "string" &&
+    /^[=+\-@\t\r]/.test(value)
+  ) {
+    return "'" + value;
+  }
+
+  return value;
+
+}
+
+
+function formatMatchIdColumn_(sheet, headers) {
+
+  const col = headers.indexOf("matchId");
+  if (col === -1) return;
+
+  const height = Math.max(sheet.getLastRow(), 1);
+  sheet.getRange(1, col + 1, height, 1).setNumberFormat("@");
+
 }
 
 

@@ -85,6 +85,27 @@ def _to_int(value: Any) -> Optional[int]:
         return None
 
 
+def match_id_text(value: Any, context: str) -> str:
+    """Exact digit string. Floats are refused: a 16+ digit id rounded by
+    IEEE-754 cannot be recovered, and writing it would create a second match.
+    """
+    if isinstance(value, float):
+        raise IngestError(f"{context}: matchId lost precision (got a non-integer number)")
+    if isinstance(value, bool) or value is None:
+        text = ""
+    elif isinstance(value, int):
+        text = str(value) if value >= 0 else ""
+    else:
+        text = str(value).strip()
+        if text.startswith("'"):
+            text = text[1:]
+    if not text:
+        raise IngestError(f"{context}: match without matchId")
+    if not text.isdigit():
+        raise IngestError(f"{context}: matchId must be digits, got {text!r}")
+    return text
+
+
 def _to_float(value: Any) -> Optional[float]:
     if value is None or value == "":
         return None
@@ -176,9 +197,7 @@ def _crest(club: Mapping[str, Any]) -> str:
 
 def normalize_match(raw: Mapping[str, Any], club_id: Any, match_type: str) -> Dict[str, Any]:
     """One match row seen from ``club_id``'s side."""
-    match_id = str(raw.get("matchId") or "").strip()
-    if not match_id:
-        raise IngestError(f"club {club_id}: match without matchId")
+    match_id = match_id_text(raw.get("matchId"), f"club {club_id}")
 
     our_id = str(club_id)
     clubs = raw.get("clubs") or {}
@@ -231,10 +250,10 @@ def normalize_appearance(
     player: Mapping[str, Any], match_type: str,
 ) -> Dict[str, Any]:
     """One player-appearance row with EA fields, decoded events and quality flags."""
-    match_id = str(raw_match.get("matchId") or "").strip()
+    match_id = match_id_text(raw_match.get("matchId"), f"club {club_id}")
     pid = str(player_id or "").strip()
-    if not match_id or not pid:
-        raise IngestError(f"club {club_id}: player row without matchId/playerId")
+    if not pid:
+        raise IngestError(f"club {club_id}: player row without playerId")
 
     counts = parse_event_aggregates(player)
     coverage = event_coverage(player, counts)

@@ -118,6 +118,7 @@ var PandaStats = (function () {
     decisions: "Decision-making & positioning",
     discipline: "Discipline",
     specialist: "Specialist",
+    experimental: "Experimental",
     overall: "Overall"
   };
 
@@ -182,6 +183,8 @@ var PandaStats = (function () {
       { fields: ["firstTimePasses"] }, "event", "high", true, "First-time passes played."),
     m("switchesOfPlay", "Switches of play", "passing", "count",
       { fields: ["switchesOfPlay"] }, "event", "high", true, "Switch-of-play passes."),
+    m("flairPasses", "Flair passes", "passing", "count",
+      { fields: ["flairPasses"] }, "event", "high", true, "Fancy passes completed."),
     m("crossesCompleted", "Crosses completed", "passing", "count",
       { fields: ["passesCompletedCross"] }, "event", "high", true,
       "Completed crosses, including set pieces.",
@@ -218,6 +221,17 @@ var PandaStats = (function () {
     m("goalsWeakFoot", "Weak-foot goals", "attacking", "count",
       { fields: ["goalsWeakFoot"] }, "event", "high", true,
       "Goals with the weak foot. A tag on goals: never add to the goal total."),
+    m("goalsOffPost", "Goals off the post", "attacking", "count",
+      { fields: ["goalsOffPost"] }, "event", "high", true,
+      "Goals that went in off the post. A tag on goals: never add to the goal total."),
+    m("shotsInsideBox", "Shots inside the box", "attacking", "count",
+      { fields: ["shotsOnTargetInsideBox", "shotsOffTargetInsideBox"] }, "event", "high", true,
+      "Shots from inside the box, on and off target.",
+      { overlap: "A breakdown of shots, not an extra shot total." }),
+    m("shotsOutsideBox", "Shots outside the box", "attacking", "count",
+      { fields: ["shotsOnTargetOutsideBox", "shotsOffTargetOutsideBox"] }, "event", "high", true,
+      "Shots from outside the box, on and off target.",
+      { overlap: "A breakdown of shots, not an extra shot total." }),
 
     // Creativity
     m("assists", "Assists", "creativity", "count", { fields: ["assists"] },
@@ -234,6 +248,9 @@ var PandaStats = (function () {
     m("tacklesWon", "Tackles won", "defending", "count", { fields: ["tacklesMade"] },
       "ea", "verified", true, "Successful tackles (EA named total).",
       { overlap: "Do not add dispossessions: they can describe the same action." }),
+    m("tacklesLost", "Tackles lost", "defending", "count", { fields: ["tacklesLost"] },
+      "event", "high", false, "Tackles attempted and lost.",
+      { overlap: "The other half of tackle success. Do not add this to tackles won." }),
     m("tackleSuccess", "Tackle success", "defending", "ratio",
       { numerator: ["tacklesMade"], denominator: ["tackleAttempts"] },
       "ea", "verified", true, "Successful tackles as a share of tackle attempts.",
@@ -275,6 +292,10 @@ var PandaStats = (function () {
       { strengthLabel: "Safe in own third", weaknessLabel: "Risky losses near own goal" }),
     m("dribblesCompleted", "Dribbles completed", "possession", "count",
       { fields: ["dribblesCompleted"] }, "event", "high", true, "Dribbles completed."),
+    m("playersBeaten", "Players beaten", "possession", "count",
+      { fields: ["dribblesBeat", "dribblesSkillMoveBeat"] }, "event", "high", true,
+      "Opponents beaten while dribbling, with or without a skill move.",
+      { overlap: "The two counters do not overlap: skill-move beats are counted separately." }),
 
     // Decision-making & positioning (EA in-game feedback, not validated tactics)
     m("bestOptionTaken", "Best option taken", "decisions", "count",
@@ -297,6 +318,12 @@ var PandaStats = (function () {
     m("severeOutOfPosition", "Badly out of position", "decisions", "count",
       { fields: ["outOfPositionSeverity4", "outOfPositionSeverity5"] },
       "event", "high", false, "Out-of-position flags at severity 4 or 5 of 5."),
+    m("inPosition", "In position", "decisions", "count",
+      { fields: ["inPosition"] }, "event", "high", true,
+      "Times EA praised this player's positioning."),
+    m("noGoodOption", "No good option", "decisions", "count",
+      { fields: ["feedbackNoGoodOption"] }, "event", "high", null,
+      "EA feedback that no good pass was on. Context, not a mistake."),
 
     // Discipline
     m("foulsConceded", "Fouls conceded", "discipline", "count",
@@ -305,6 +332,10 @@ var PandaStats = (function () {
       { fields: ["yellowCards"] }, "event", "high", false, "Yellow cards."),
     m("redCards", "Red cards", "discipline", "count", { fields: ["redCards"] },
       "ea", "verified", false, "Red cards (EA named total)."),
+    m("penaltiesConceded", "Penalties conceded", "discipline", "count",
+      { fields: ["penaltiesConceded"] }, "event", "high", false, "Penalties given away."),
+    m("foulsWon", "Fouls won", "discipline", "count",
+      { fields: ["foulsWon"] }, "event", "high", null, "Times this player was fouled."),
 
     // Specialist
     m("saves", "Saves", "specialist", "count", { fields: ["saves"] },
@@ -315,6 +346,33 @@ var PandaStats = (function () {
       { strengthLabel: "Hard to beat", weaknessLabel: "Concedes often" }),
     m("cornersTaken", "Corners taken", "specialist", "count",
       { fields: ["cornersTaken"] }, "event", "high", null, "Corners taken."),
+    m("cleanSheets", "Clean sheets", "specialist", "count",
+      { fields: ["cleanSheetDef", "cleanSheetGK"] }, "ea", "verified", true,
+      "Clean sheets EA awarded for this appearance. Counted for defenders and goalkeepers only.",
+      { eligibleGroups: ["DEF", "GK"] }),
+    m("saveRate", "Save rate", "specialist", "ratio",
+      { numerator: ["saves"], denominator: ["saves", "goalsConceded"] },
+      "derived", "medium", true,
+      "Saves as a share of saves plus goals conceded, for goalkeeper appearances only. Goals conceded are not the same as shots faced.",
+      { minAttempts: 5, shrinkage: 3, eligibleGroups: ["GK"] }),
+    m("manOfTheMatch", "EA man of the match", "specialist", "count",
+      { fields: ["manOfTheMatch"] }, "ea", "verified", true,
+      "Times EA named this player man of the match. Shown as a fun fact, not as an overall ranking."),
+
+    // Experimental community ids. Mappings are partial; never used in scores or awards.
+    m("expPlayerOffside", "Caught offside", "experimental", "count",
+      { fields: ["expPlayerOffside"] }, "event", "experimental", false,
+      "Times this player was caught offside. Experimental mapping of event 104; the count is often short.",
+      { overlap: "Not the same as a pass that put a team-mate offside." }),
+    m("expBadPass", "Bad pass", "experimental", "count",
+      { fields: ["expBadPass"] }, "event", "experimental", false,
+      "Experimental mapping of event 151, possibly a hospital or poor pass. Not verified enough to score."),
+    m("expOpenPlayCrosses", "Open-play crosses", "experimental", "count",
+      { fields: ["expOpenPlayCrosses"] }, "event", "experimental", null,
+      "Experimental mapping of event 157: open-play crosses attempted. Add event 145 when a corner is crossed."),
+    m("expShouldHaveShot", "Should have shot", "experimental", "count",
+      { fields: ["expShouldHaveShot"] }, "event", "experimental", false,
+      "Experimental mapping of event 179: EA thought a shot was on. Checked on only a handful of matches."),
 
     // Overall
     m("rating", "EA match rating", "overall", "mean", { fields: ["rating"] },
@@ -332,6 +390,7 @@ var PandaStats = (function () {
       minAttempts: 0,
       shrinkage: 0,
       overlap: "",
+      eligibleGroups: null,
       strengthLabel: label,
       weaknessLabel: label
     }, extra || {});
@@ -362,18 +421,46 @@ var PandaStats = (function () {
     return "sum(" + metric.fields.join(" + ") + ")";
   }
 
-  // Experimental community event ids: stored raw, never decoded into scores.
-  const EXPERIMENTAL_EVENTS = [
-    { id: 104, label: "Player caught offside", note: "Presence correct, count often under (community research)." },
-    { id: 151, label: "Bad pass", note: "Possibly hospital/poor passes; 4/4 matches in community research." },
-    { id: 157, label: "Open-play crosses attempted", note: "Add event 145 when a corner is crossed." },
-    { id: 179, label: "Should have shot", note: "2/2 cases in community research." }
-  ];
+  // Experimental community event ids. The raw log is never sent to the
+  // browser; these four counts are copied onto the row instead.
+  const EXPERIMENTAL_FIELDS = {
+    104: "expPlayerOffside",
+    151: "expBadPass",
+    157: "expOpenPlayCrosses",
+    179: "expShouldHaveShot"
+  };
+
+  function parseRawEvents(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const counts = new Map();
+    String(value).split(",").forEach(part => {
+      const bits = part.split(":");
+      if (bits.length !== 2 || !/^\d+$/.test(bits[0]) || !/^\d+$/.test(bits[1])) return;
+      counts.set(Number(bits[0]), Number(bits[1]));
+    });
+    return counts;
+  }
+
+  // Null when the row has no raw event log and no extracted count.
+  // A present log with the id missing is a real zero.
+  function experimentalFields(row) {
+    const parsed = parseRawEvents(row.rawEvents);
+    const out = {};
+    Object.entries(EXPERIMENTAL_FIELDS).forEach(([id, field]) => {
+      if (parsed) out[field] = parsed.has(Number(id)) ? parsed.get(Number(id)) : 0;
+      else out[field] = toNumber(row[field]);
+    });
+    return out;
+  }
 
   // ------------------------------------------------------- aggregation
 
+  function rowEligible(row, metric) {
+    return !metric.eligibleGroups || metric.eligibleGroups.includes(positionGroup(row));
+  }
+
   function rowHasData(row, metric) {
-    if (!isAppearance(row)) return false;
+    if (!isAppearance(row) || !rowEligible(row, metric)) return false;
     if (metric.source === "event" && !eventsUsable(row)) return false;
     return requiredFields(metric).every(field => toNumber(row[field]) !== null);
   }
@@ -386,7 +473,7 @@ var PandaStats = (function () {
   // are excluded from both numerator and denominator (missing != zero).
   function aggregate(rows, key) {
     const metric = getMetric(key);
-    const appearances = rows.filter(isAppearance);
+    const appearances = rows.filter(row => isAppearance(row) && rowEligible(row, metric));
     const withData = appearances.filter(row => rowHasData(row, metric));
 
     const seconds = withData.map(row => toNumber(row.secondsPlayed));
@@ -848,7 +935,8 @@ var PandaStats = (function () {
     METRICS,
     ROLE_WEIGHTS,
     SCORE_SETTINGS,
-    EXPERIMENTAL_EVENTS,
+    EXPERIMENTAL_FIELDS,
+    experimentalFields,
     positionGroup,
     toNumber,
     isAppearance,

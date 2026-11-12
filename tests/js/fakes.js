@@ -6,8 +6,12 @@
 
 function parseCell(value) {
   if (typeof value !== "string") return value;
+  // A leading apostrophe forces text, the way Sheets does, and is not stored.
   if (value.startsWith("'")) return value.slice(1);
-  if (/^[+-]?\d+(\.\d+)?$/.test(value.trim()) && value.trim().length <= 15) return Number(value);
+  const trimmed = value.trim();
+  // Any other numeric text becomes a double. Integers above 2^53-1 are rounded,
+  // which is the bug text-formatted match ids exist to avoid.
+  if (/^[+-]?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
   return value;
 }
 
@@ -49,7 +53,13 @@ class FakeRange {
 
   setFontWeight() { return this; }
   setBackground() { return this; }
-  setNumberFormat() { return this; }
+  setNumberFormat(format) {
+    this.sheet.numberFormats = this.sheet.numberFormats || [];
+    this.sheet.numberFormats.push({
+      row: this.row, col: this.col, rows: this.rows, cols: this.cols, format
+    });
+    return this;
+  }
 }
 
 class FakeSheet {

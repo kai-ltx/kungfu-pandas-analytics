@@ -10,7 +10,7 @@ const { loadStats } = require("../tests/js/load");
 const OUT = path.join(__dirname, "..", "docs", "pandametrics-data-dictionary.md");
 
 const STORED_FIELDS = [
-  ["matchId", "Match", "EA match id (15-digit string). Key with clubId.", "verified"],
+  ["matchId", "Match", "EA match id, kept as a digit string (text cell) so 16+ digit ids are not rounded. Key with clubId.", "verified"],
   ["clubId", "Match/appearance", "Our club id. Key with matchId (+ playerId).", "verified"],
   ["playerId", "Appearance", "EA player id. Stable across all three clubs in Nov 2026 samples; used to merge profiles.", "verified"],
   ["timestamp", "Match/appearance", "Kick-off time as ISO-8601 in Europe/London.", "verified"],
@@ -80,11 +80,16 @@ function render() {
     lines.push(`| ${S.GROUP_LABELS[g]} (${g}) | ${Object.entries(w).map(([k, v]) => `${S.getMetric(k).label} ×${v}`).join(", ")} |`);
   });
   lines.push("");
-  lines.push("## Experimental events (stored in `rawEvents`, not decoded)");
+  lines.push("## Experimental events");
   lines.push("");
-  lines.push("| Event | Possible meaning | Evidence |");
+  lines.push("These four community mappings are copied off `rawEvents` as counts and shown with an experimental badge. A row with no raw log leaves them blank. They are never used in the Panda Score or awards.");
+  lines.push("");
+  lines.push("| Event | Field | Meaning |");
   lines.push("|---|---|---|");
-  S.EXPERIMENTAL_EVENTS.forEach(e => lines.push(`| ${e.id} | ${e.label} | ${e.note} |`));
+  Object.entries(S.EXPERIMENTAL_FIELDS).forEach(([id, field]) => {
+    const metric = S.METRICS.find(m => m.fields && m.fields[0] === field);
+    lines.push(`| ${id} | \`${field}\` | ${metric.description.replace(/\|/g, "/")} |`);
+  });
   lines.push("");
   lines.push("## Not available from the API");
   lines.push("");

@@ -78,6 +78,28 @@ def test_missing_match_id_raises():
         ingest.normalize_match(raw, 451080, "leagueMatch")
 
 
+def test_long_match_id_stays_an_exact_json_string():
+    # 2^53+1 cannot survive JavaScript or Google Sheets as a number.
+    match_id = 9007199254740993
+    raw = copy.deepcopy(load(451080, "leagueMatch")[0])
+    raw["matchId"] = match_id
+    matches, players = ingest.normalize_club_matches([raw], 451080, "leagueMatch")
+    assert matches[0]["matchId"] == "9007199254740993"
+    assert all(p["matchId"] == "9007199254740993" for p in players)
+    payload = json.dumps({"matches": matches, "players": players})
+    assert '"matchId": "9007199254740993"' in payload
+    assert '"matchId": 9007199254740993' not in payload
+    restored = json.loads(payload)
+    assert restored["matches"][0]["matchId"] == "9007199254740993"
+
+
+def test_float_match_id_is_rejected():
+    raw = copy.deepcopy(load(451080, "leagueMatch")[0])
+    raw["matchId"] = 1.5
+    with pytest.raises(ingest.IngestError):
+        ingest.normalize_match(raw, 451080, "leagueMatch")
+
+
 def test_match_without_our_club_raises():
     raw = load(451080, "leagueMatch")[0]
     with pytest.raises(ingest.IngestError):

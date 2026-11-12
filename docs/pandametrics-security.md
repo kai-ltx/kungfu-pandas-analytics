@@ -38,6 +38,8 @@ The dashboard page talks to the server with `google.script.run`. Google's docume
 - **S8 (CWE-770 / CWE-294):** the webhook has no rate limit or HMAC. A leaked token allows unlimited (deduplicated) writes; rotate it if exposed.
 - **Disclosure caveat:** the old functions stay callable in production until V4 is deployed.
 
+The historical backfill (`tools/backfill.py`) is a local script. It is not an Apps Script function, so it is not callable from the dashboard. It refuses the production spreadsheet id and has no Google Sheets client. Sync Now is not in this release.
+
 ## 4. "Sync Now": preventing anonymous abuse
 
 ### Current V4 behaviour

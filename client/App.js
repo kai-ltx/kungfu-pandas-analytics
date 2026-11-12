@@ -382,6 +382,7 @@
     return `<div class="metric-card ${m.status === "provisional" ? "provisional" : ""}">
       <div class="metric-label">${esc(m.label)} ${badge(m.confidence)}</div>
       <div class="metric-value">${esc(main)}</div>
+      <div class="metric-detail">${esc(m.description)}</div>
       <div class="metric-detail">${esc(detail)}</div>
       ${peer}
       <div class="metric-detail">${coverageChip(m.coverage.withData, m.coverage.appearances)}${m.status === "provisional" ? ' <span class="chip">Provisional</span>' : ""}</div>
@@ -424,7 +425,7 @@
       </div>
       <div class="panel"><h3>🎓 Personal coaching</h3>${tips}</div>
       <div class="panel"><h3>🧬 Passing DNA</h3><p class="small">Share and completion of passes with a recorded direction. Failed-pass directions are under-recorded by EA, so completion here reads slightly high.</p>${dna}</div>
-      ${l.categories.map(c => `<div class="panel"><h3>${esc(c.label)}</h3><div class="metric-grid">${c.metrics.map(labMetric).join("")}</div></div>`).join("")}`;
+      ${l.categories.map(c => `<div class="panel"><h3>${esc(c.label)}</h3>${c.note ? `<p class="small">${esc(c.note)}</p>` : ""}<div class="metric-grid">${c.metrics.map(labMetric).join("")}</div></div>`).join("")}`;
 
     $("labPlayer").onchange = ev => { state.player = ev.target.value; render(); };
   }

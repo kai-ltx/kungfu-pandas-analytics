@@ -176,6 +176,8 @@ function pandaNormalizeAppearances_(rows, matchIndex) {
     numeric.forEach(f => {
       row[f] = PandaStats.toNumber(r[f]);
     });
+    // Four experimental counts only. The raw event log stays on the sheet.
+    Object.assign(row, PandaStats.experimentalFields(r));
     out.push(row);
   });
   return out;

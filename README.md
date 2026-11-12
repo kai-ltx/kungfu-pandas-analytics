@@ -20,6 +20,7 @@ node tools/build_client.js               # after changing Stats.js or anything i
 node tools/build_data_dictionary.js      # after changing apps-script/Stats.js
 .venv/bin/python tools/build_js_fixture.py  # after changing pandametrics/ingest.py
 node tools/score_distribution.js         # anonymised Panda Score distribution from samples/
+python tools/backfill.py --snapshot sheet.json --audit backfill-audit.json
 ```
 
 Local dashboard preview (sanitised fixture data, no Google services):

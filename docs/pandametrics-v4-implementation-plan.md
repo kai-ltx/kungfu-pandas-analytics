@@ -60,7 +60,7 @@ Branch: `feature/pandametrics-v4`. Every phase ends with `python -m pytest -q` a
 | D3 | Review Panda Score v1 role weights (data dictionary). | Before Phase 3 UI |
 | D4 | Approve a separate **test** web-app deployment for Phase 3 review (production untouched). | Start of Phase 3 |
 | D5 | Manual sync: GitHub "Run workflow" only, admin-only dashboard button, or teammate sign-in. | Phase 5 |
-| D6 | Store `matchId`/`playerId` as text in new rows (prefix `'`). Current ids are 15 digits, the most Sheets stores exactly; a 16-digit id would be rounded and break dedupe. Dedupe already compares as strings, so mixed old/new types are safe. | Before ids reach 16 digits |
+| D6 | Store new `matchId` values as text (leading `'`, column format `@`). Implemented and tested for 16+ digit ids. Existing numeric cells are not rewritten; dedupe still matches them. Not yet applied to the live Sheet. | Done in code |
 | D7 | Optional Panda Score tuning (ATT pass accuracy 1→0.5, DEF aerials 1→0.5) — see `docs/pandametrics-score-review.md` §6. | Any time |
 
 ## Rollout (after approval only)

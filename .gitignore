@@ -28,4 +28,14 @@ __pycache__/
 
 # Raw EA API samples (contain gamertags); sanitised fixtures live in tests/fixtures
 samples/
+
+# Local dashboard preview output
 preview/
+
+# Backfill outputs (contain real match data)
+backfill-audit*.json
+filled-snapshot.json
+
+# Isolated test environment: local ids and generated Apps Script build
+config/*.local.json
+build/

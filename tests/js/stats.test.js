@@ -41,11 +41,14 @@ test("metric registry is internally consistent", () => {
 
 test("every registry field exists in ingested rows", () => {
   const columns = new Set(Object.keys(fixture.players[0]));
+  const derived = new Set(Object.values(S.EXPERIMENTAL_FIELDS));
   S.METRICS.forEach(m => {
     S.requiredFields(m).forEach(field => {
+      if (derived.has(field)) return;
       assert.ok(columns.has(field), m.key + " needs missing column " + field);
     });
   });
+  assert.ok(columns.has("rawEvents"), "experimental counts are derived from rawEvents");
 });
 
 test("role weights use only scoreable metrics without known overlaps", () => {
@@ -78,6 +81,19 @@ test("no source field feeds two components of the same role", () => {
   });
 });
 
+test("Panda Score role weights stay at the reviewed v1 values", () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(S.ROLE_WEIGHTS)), {
+    ATT: { goals: 3, assists: 2, shotAccuracy: 1.5, dribblesCompleted: 1,
+           highRecoveries: 1, passAccuracy: 1 },
+    MID: { passAccuracy: 2, forwardPassesCompleted: 2, assists: 1.5, goals: 1,
+           throughPasses: 1, interceptions: 1, tacklesWon: 1, possessionLost: 1 },
+    DEF: { interceptions: 2, defensiveThirdLosses: 2, tackleSuccess: 2,
+           passAccuracy: 1.5, aerialDuelsWonDefending: 1, crossesBlocked: 0.5,
+           outOfPosition: 1 },
+    GK: { saves: 2, goalsConceded: 2, passAccuracy: 1 }
+  });
+});
+
 test("role weights only use high or verified confidence metrics", () => {
   Object.values(S.ROLE_WEIGHTS).forEach(weights => {
     Object.keys(weights).forEach(key => {
@@ -95,6 +111,39 @@ test("lower-is-better score metrics have readable strength/weakness labels", () 
       assert.notEqual(m.weaknessLabel, m.label, key + " needs a weaknessLabel");
     }
   });
+});
+
+test("experimental community events are counted from the raw log and stay out of the score", () => {
+  const sample = row({
+    rawEvents: "104:2,179:1",
+    eventCoverage: "complete",
+    positionGroup: "ATT"
+  });
+  const fields = S.experimentalFields(sample);
+  assert.equal(fields.expPlayerOffside, 2);
+  assert.equal(fields.expBadPass, 0);
+  assert.equal(fields.expOpenPlayCrosses, 0);
+  assert.equal(fields.expShouldHaveShot, 1);
+  assert.equal(S.experimentalFields(row({})).expPlayerOffside, null);
+
+  const counted = S.aggregate([Object.assign({}, sample, fields)], "expPlayerOffside");
+  assert.equal(counted.total, 2);
+  const hidden = S.aggregate([Object.assign({}, sample, fields, { eventCoverage: "incomplete" })], "expPlayerOffside");
+  assert.equal(hidden.total, null);
+
+  ["expPlayerOffside", "expBadPass", "expOpenPlayCrosses", "expShouldHaveShot"].forEach(key => {
+    assert.equal(S.getMetric(key).confidence, "experimental");
+    Object.values(S.ROLE_WEIGHTS).forEach(weights => assert.equal(weights[key], undefined));
+  });
+});
+
+test("clean sheets count defender and goalkeeper appearances only", () => {
+  const agg = S.aggregate([
+    row({ positionGroup: "DEF", cleanSheetDef: 1, cleanSheetGK: 0 }),
+    row({ matchId: "2", positionGroup: "ATT", cleanSheetDef: 0, cleanSheetGK: 0 })
+  ], "cleanSheets");
+  assert.equal(agg.appearances, 1);
+  assert.equal(agg.total, 1);
 });
 
 test("formula strings describe pooled ratios", () => {

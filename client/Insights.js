@@ -29,6 +29,36 @@ var PandaInsights = (function () {
       metrics: ["goodDecisionShare", "bestOptionTaken", "shouldHavePassedElsewhere", "outOfPosition", "foulsConceded"] }
   ];
 
+  // Everything the lab shows. Rankings stay on the shorter list above.
+  const LAB_NOTE = "Community mapping, not fully verified. Left out of the Panda Score and every award.";
+  const LAB_CATEGORIES = [
+    { key: "passing", label: "🎯 Passing",
+      metrics: ["passAccuracy", "passesCompleted", "forwardPassesCompleted", "forwardPassAccuracy",
+                "forwardPassShare", "backwardPassShare", "shortPassAccuracy", "mediumPassAccuracy",
+                "longPassAccuracy", "flairPasses", "offsidePasses"] },
+    { key: "attacking", label: "⚽ Attacking",
+      metrics: ["goals", "shots", "shotsInsideBox", "shotsOutsideBox", "shotAccuracy", "conversion",
+                "goalInvolvements", "goalsFirstTime", "goalsWeakFoot", "goalsOffPost", "aerialDuelsWonAttacking"] },
+    { key: "creativity", label: "🪄 Creativity",
+      metrics: ["assists", "secondAssists", "throughPasses", "throughBallAssists", "switchesOfPlay", "firstTimePasses"] },
+    { key: "defending", label: "🛡️ Defending",
+      metrics: ["tacklesWon", "tacklesLost", "tackleSuccess", "interceptions", "opponentsDispossessed",
+                "crossesBlocked", "aerialDuelsWonDefending"] },
+    { key: "possession", label: "🔄 Possession",
+      metrics: ["possessionWon", "highRecoveries", "possessionLost", "defensiveThirdLosses",
+                "dribblesCompleted", "playersBeaten"] },
+    { key: "decisions", label: "🧠 Decisions",
+      metrics: ["goodDecisionShare", "bestOptionTaken", "shouldHavePassedElsewhere", "noGoodOption",
+                "inPosition", "outOfPosition", "severeOutOfPosition"] },
+    { key: "discipline", label: "🟨 Discipline",
+      metrics: ["foulsConceded", "foulsWon", "yellowCards", "redCards", "penaltiesConceded", "dangerousTackles"] },
+    { key: "specialist", label: "🧤 Specialist",
+      metrics: ["crossesCompleted", "crossAccuracy", "cornersTaken", "saves", "saveRate",
+                "goalsConceded", "cleanSheets", "manOfTheMatch"] },
+    { key: "experimental", label: "🧪 Experimental", note: LAB_NOTE,
+      metrics: ["expPlayerOffside", "expBadPass", "expOpenPlayCrosses", "expShouldHaveShot"] }
+  ];
+
   const PERIODS = [
     { key: "all", label: "All recorded" },
     { key: "last28", label: "Last 28 days" },
@@ -101,11 +131,13 @@ var PandaInsights = (function () {
     const deduped = S.dedupeAppearances(data.appearances || []);
     const rows = deduped.rows.map(r => {
       const match = matchIndex.get(r.clubId + "|" + r.matchId);
-      return Object.assign({}, r, {
+      const row = Object.assign({}, r, S.experimentalFields(r), {
         matchType: r.matchType || (match && match.matchType) || "leagueMatch",
         timestampUnix: r.timestampUnix || (match && match.timestampUnix) || null,
         result: match ? match.result : null
       });
+      delete row.rawEvents;
+      return row;
     });
 
     const official = rows.filter(r => r.matchType === "leagueMatch" || r.matchType === "playoffMatch");
@@ -312,6 +344,28 @@ var PandaInsights = (function () {
       if (t.matchesWithData < 2 || i.matchesWithData < 2) return null;
       return (t.per90 !== null ? t.per90 : t.perMatch) + (i.per90 !== null ? i.per90 : i.perMatch);
     };
+    const aerialRate = p => {
+      const parts = [["ATT", "aerialDuelsWonAttacking"], ["MID", "aerialDuelsWonDefending"], ["DEF", "aerialDuelsWonDefending"]];
+      let weighted = 0;
+      let weight = 0;
+      let matches = 0;
+      parts.forEach(([group, key]) => {
+        const agg = S.aggregate(p.rows.filter(r => S.positionGroup(r) === group), key);
+        const rate = agg.per90 !== null ? agg.per90 : agg.perMatch;
+        if (!agg.matchesWithData || rate === null) return;
+        const w = agg.seconds ? agg.seconds / S.SECONDS_PER_90 : agg.matchesWithData;
+        weighted += rate * w;
+        weight += w;
+        matches += agg.matchesWithData;
+      });
+      return matches >= 2 && weight ? weighted / weight : null;
+    };
+    const clearest = p => {
+      const compared = roleAdjusted(p.rows, allRows, "goodDecisionShare");
+      if (!compared || compared.diff <= 0 || compared.aggregate.matchesWithData < 2) return null;
+      if ((compared.aggregate.denominator || 0) < S.getMetric("goodDecisionShare").minAttempts) return null;
+      return compared.diff;
+    };
 
     const hall = [
       [{ key: "pandaOfWeek", title: "🐼 Panda of the Period", description: "Highest position-adjusted Panda Score." },
@@ -324,6 +378,12 @@ var PandaInsights = (function () {
        pick(pool, rateOf("forwardPassesCompleted", ["MID", "DEF"])), v => fmt(v, 1) + " /90"],
       [{ key: "kungFuMaster", title: "🥋 Kung Fu Master", description: "Most tackles won + interceptions per 90 as a defender or midfielder (separate counters, no overlap)." },
        pick(pool, defensive), v => fmt(v, 1) + " /90"],
+      [{ key: "crossMaster", title: "📐 Cross Master", description: "Most completed crosses per 90 as an attacker or midfielder." },
+       pick(pool, rateOf("crossesCompleted", ["ATT", "MID"])), v => fmt(v, 1) + " /90"],
+      [{ key: "aerialAce", title: "🦅 Aerial Ace", description: "Most aerial duels won per 90 in the duel that matches the position played: attacking duels for attackers, defensive duels for midfielders and defenders." },
+       pick(pool, aerialRate), v => fmt(v, 1) + " /90"],
+      [{ key: "clearestHead", title: "🧠 Clearest Head", description: "Best share of good passing decisions compared with players in the same positions." },
+       pick(pool, clearest), v => "+" + fmt(v, 1) + " pp"],
       [{ key: "mostImproved", title: "📈 Most Improved", description: "Biggest Panda Score rise on the previous period." },
        pick(pool, change), v => "+" + fmt(v, 1)]
     ].map(([def, w, f]) => awardEntry(def, w, f));
@@ -349,6 +409,10 @@ var PandaInsights = (function () {
          description: "Most out-of-position flags per 90 above positional peers.",
          advice: "Recover your shape first after an attack breaks down." },
        pick(pool, excess("outOfPosition")), v => "+" + fmt(v, 1) + " /90"],
+      [{ key: "offsideOutlet", title: "🚩 Offside Outlet", shame: true,
+         description: "Most passes into offside per 90 above players in the same positions. This is the pass, not the player being caught offside.",
+         advice: "Hold the through ball until the runner is level." },
+       pick(pool, excess("offsidePasses")), v => "+" + fmt(v, 1) + " /90"],
       [{ key: "biggestDecline", title: "📉 Biggest Decline", shame: true,
          description: "Largest Panda Score drop on the previous period.",
          advice: "Compare this period's weakest metrics with last period in Evolution." },
@@ -356,7 +420,7 @@ var PandaInsights = (function () {
     ].map(([def, w, f]) => {
       const entry = awardEntry(def, w, f);
       // A "shame" for a positive change or below-average excess is not a shame.
-      if (w && ["crabKing", "butterfingers", "tunnelVision", "lostPanda"].includes(def.key) && w.value <= 0) entry.winner = null;
+      if (w && ["crabKing", "butterfingers", "tunnelVision", "lostPanda", "offsideOutlet"].includes(def.key) && w.value <= 0) entry.winner = null;
       if (w && def.key === "biggestDecline" && w.value >= 0) entry.winner = null;
       if (!entry.winner) entry.value = null;
       return entry;
@@ -581,7 +645,8 @@ var PandaInsights = (function () {
     if (!player) return null;
     const score = S.pandaScore(player.rows, prepared.benchmarks, { minMatches: state.minMatches });
 
-    const categories = DISPLAY_CATEGORIES.map(cat => ({
+    const categories = LAB_CATEGORIES.map(cat => ({
+      note: cat.note || "",
       key: cat.key,
       label: cat.label,
       metrics: cat.metrics.map(key => {
@@ -720,6 +785,7 @@ var PandaInsights = (function () {
 
   return {
     DISPLAY_CATEGORIES,
+    LAB_CATEGORIES,
     PERIODS,
     MATCH_TYPES,
     DEFAULT_STATE,

@@ -93,7 +93,7 @@ test("awards only go to eligible players and shame needs a real excess", () => {
   const eligibleIds = new Set(model.rankings.scores.qualified.map(t => t.id));
   model.awards.hall.concat(model.awards.shame).forEach(a => {
     if (a.winner) assert.ok(eligibleIds.has(a.winner.id), a.key);
-    if (["crabKing", "butterfingers", "tunnelVision", "lostPanda"].includes(a.key) && a.winner) {
+    if (["crabKing", "butterfingers", "tunnelVision", "lostPanda", "offsideOutlet"].includes(a.key) && a.winner) {
       assert.match(a.value, /^\+/);
     }
   });
@@ -159,12 +159,44 @@ test("coaching tips target the player's own weaknesses with evidence", () => {
   assert.ok(checked > 0, "fixture should produce at least one tip");
 });
 
+test("lab lists every supported stat once and keeps experimental events separate", () => {
+  const keys = I.LAB_CATEGORIES.flatMap(c => c.metrics);
+  assert.equal(new Set(keys).size, keys.length);
+  keys.forEach(k => assert.ok(S.getMetric(k), k));
+  const experimental = I.LAB_CATEGORIES.find(c => c.key === "experimental");
+  experimental.metrics.forEach(k => assert.equal(S.getMetric(k).confidence, "experimental", k));
+  I.DISPLAY_CATEGORIES.flatMap(c => c.metrics).forEach(k => {
+    assert.notEqual(S.getMetric(k).confidence, "experimental", k + " is on a rankings board");
+  });
+  const first = S.groupByPlayer(prepared.rows)[0];
+  const l = I.lab(prepared, prepared.rows, first.id, I.DEFAULT_STATE);
+  const shown = l.categories.flatMap(c => c.metrics.map(m => m.key));
+  assert.deepEqual(shown, keys);
+  assert.match(l.categories.find(c => c.key === "experimental").note, /not fully verified/);
+  assert.ok(!("rawEvents" in prepared.rows[0]));
+});
+
+test("added awards keep goal and assist totals and stay position-aware", () => {
+  const model = I.build(prepared, { minMatches: 3 }, NOW, null);
+  const byKey = key => model.awards.hall.concat(model.awards.shame).find(a => a.key === key);
+  assert.match(byKey("goldenBoot").description, /Most goals/);
+  assert.match(byKey("assistKing").description, /Most assists/);
+  assert.match(byKey("crossMaster").description, /attacker or midfielder/);
+  assert.match(byKey("aerialAce").description, /position played/);
+  assert.match(byKey("clearestHead").description, /same positions/);
+  const offside = byKey("offsideOutlet");
+  assert.equal(offside.shame, true);
+  assert.match(offside.description, /same positions/);
+  if (offside.winner) assert.match(offside.value, /^\+/);
+  if (byKey("clearestHead").winner) assert.match(byKey("clearestHead").value, /^\+/);
+});
+
 test("Panda Lab passing DNA shares add up and categories carry coverage", () => {
   const first = S.groupByPlayer(prepared.rows)[0];
   const l = I.lab(prepared, prepared.rows, first.id, I.DEFAULT_STATE);
   const shares = l.passingDna.map(d => d.share || 0).reduce((a, b) => a + b, 0);
   assert.ok(Math.abs(shares - 100) < 1e-6 || shares === 0);
-  assert.equal(l.categories.length, I.DISPLAY_CATEGORIES.length);
+  assert.equal(l.categories.length, I.LAB_CATEGORIES.length);
   l.categories.forEach(c => c.metrics.forEach(m => assert.ok(m.coverage.withData <= m.coverage.appearances)));
 });
 

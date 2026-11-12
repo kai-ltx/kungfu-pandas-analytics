@@ -35,8 +35,9 @@
     .hidden { display: none !important; }
 
     nav, .buttons, .filters { display: flex; gap: 8px; margin: 12px 0; }
-    nav, .buttons.scroll { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-    nav::-webkit-scrollbar, .buttons.scroll::-webkit-scrollbar { display: none; }
+    nav, .buttons { flex-wrap: wrap; }
+    .buttons.scroll { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .buttons.scroll::-webkit-scrollbar { display: none; }
     .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .filters.inline { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
     button, select { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 11px; padding: 10px 13px; font-size: 14px; cursor: pointer; white-space: nowrap; }
@@ -124,7 +125,7 @@
     .direction-row { margin-bottom: 12px; }
     .direction-label { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: 13px; margin-bottom: 4px; }
     .direction-label span { color: var(--muted); }
-    .metric-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .metric-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
     .metric-card { background: var(--surface2); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
     .metric-card.provisional { opacity: .7; }
     .metric-label { font-size: 13px; color: var(--muted); }
