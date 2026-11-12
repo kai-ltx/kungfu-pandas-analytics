@@ -1,6 +1,6 @@
 # Apps Script deployments
 
-Checked 12 November 2026 against the live project. No deployment was updated, archived, or deleted. The GitHub webhook secret was not read.
+Checked 12 November 2026 against the live project, before the V4 release. The table shows the state before release. The V4 release section below has the current versions. The GitHub webhook secret was not read.
 
 The local project is bound to the existing script (ID begins `14BoR7`).
 
@@ -20,9 +20,34 @@ An unauthenticated request was not given the dashboard. It was redirected to Goo
 
 Nothing in this repository points at the head deployment. The GitHub Actions workflow uses the `GOOGLE_WEBHOOK_URL` secret. That secret was not read, so it is not proven that the webhook still points at version 5.
 
-## Decision
+## V4 release, 12 November 2026
 
-Do not `clasp push` this project. A push would not change versions 5 or 8, but it would change the public head deployment. That deployment runs as the owner against the production spreadsheet. Because its access is anonymous and the live webhook URL was not re-checked, pushing is not safe.
+Approved for production and released from commit `e07634a`, which is byte-identical to test version 2 apart from the test spreadsheet guard.
+
+| Prefix | Before | After | Description |
+|---|---|---|---|
+| `AKfycbxlZ6HiZObu` (webhook) | 5 | 9 | PandaMetrics V4 webhook (rollback: v5) |
+| `AKfycbw0HTqAppZ3` (dashboard) | 8 | 9 | PandaMetrics V4 dashboard (rollback: v8) |
+| `AKfycbzVvMEVHG52` (head) | V3.2 code | V4 code | Follows every push |
+
+Version 9 is `PandaMetrics V4`. Both URLs are unchanged. The manifest and OAuth scopes are unchanged, so no re-authorisation was needed.
+
+Before the push, production was last modified at 02:41 UTC. The `PandaMetrics V4 - TEST` copy was made from it at 11:58 UTC and is the data backup, together with the production file's version history. The Apps Script source at head, version 5 and version 8 was saved locally under `build/prod-backup/`, which is gitignored.
+
+Checks after release: the dashboard loads anonymously with the V4 sections, and an unauthenticated webhook post returns `Unauthorized` without writing.
+
+All three deployments serve the same `Code.js`, so the importer reaches the V4 webhook whichever URL the `GOOGLE_WEBHOOK_URL` secret holds. The secret was not read.
+
+### Rollback
+
+Run these from `apps-script/`. Neither needs a push, and no data is deleted. Get the full ids from `clasp deployments`. They are not written here because the webhook URL is a secret.
+
+```
+clasp redeploy <webhook id, AKfycbxlZ6HiZObu…> -V 5 -d "Rollback to v5"
+clasp redeploy <dashboard id, AKfycbw0HTqAppZ3…> -V 8 -d "Rollback to Dashboard_V3.2"
+```
+
+To return head to V3.2, push the saved `build/prod-backup/8/` sources. Then revert `main` to `5bad9e7` so the V3 importer runs again. Rows written by V4 keep text match ids and extra columns, and the V3 dashboard reads them (covered by `tests/js/history.test.js`).
 
 ## Isolated test environment
 
@@ -37,6 +62,6 @@ Created 12 November 2026. Production deployments above were listed again after t
 | Scope | `spreadsheets.currentonly` only. The build contains no production spreadsheet id and no `openById`. |
 | Webhook | No `WEBHOOK_TOKEN` is set. `doPost` rejects every request. |
 
-The test web app stays on a 403 Drive "You need access" page until the owning Google account opens the deployment URL once and grants the spreadsheets permission. That authorization has not been completed.
+The owning Google account authorised the test web app on 12 November 2026.
 
 Source for version behaviour: [Apps Script deployments](https://developers.google.com/apps-script/concepts/deployments). A numbered version keeps serving its snapshot. A head deployment serves the latest saved code.
