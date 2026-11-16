@@ -128,8 +128,10 @@ test("experimental community events are counted from the raw log and stay out of
 
   const counted = S.aggregate([Object.assign({}, sample, fields)], "expPlayerOffside");
   assert.equal(counted.total, 2);
-  const hidden = S.aggregate([Object.assign({}, sample, fields, { eventCoverage: "incomplete" })], "expPlayerOffside");
-  assert.equal(hidden.total, null);
+  const partial = S.aggregate([Object.assign({}, sample, fields, { eventCoverage: "incomplete" })], "expPlayerOffside");
+  assert.equal(partial.total, 2, "an extracted count is kept when the rest of the log is short");
+  const missing = S.aggregate([row({ eventCoverage: "incomplete" })], "expPlayerOffside");
+  assert.equal(missing.total, null);
 
   ["expPlayerOffside", "expBadPass", "expOpenPlayCrosses", "expShouldHaveShot"].forEach(key => {
     assert.equal(S.getMetric(key).confidence, "experimental");

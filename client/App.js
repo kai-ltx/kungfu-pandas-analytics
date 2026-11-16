@@ -102,39 +102,65 @@
 
   const PALETTE = ["#baff83", "#62d69e", "#ffd76a", "#7cc8ff", "#ff9685", "#c79bff", "#ffb35c", "#9be7e0", "#f0f8f1", "#a7bcae"];
 
+  function finiteValues(seriesList) {
+    return seriesList.flatMap(s => s.points.map(p => p.value)).filter(v => v !== null && Number.isFinite(v));
+  }
+
   function lineChart(seriesList, keys, complete, opts) {
-    const o = Object.assign({ width: 640, height: 220, pad: 28, min: null, max: null }, opts);
-    const values = seriesList.flatMap(s => s.points.map(p => p.value)).filter(v => v !== null && Number.isFinite(v));
+    const o = Object.assign({ width: 640, height: 220, pad: 36, min: null, max: null }, opts);
+    const values = finiteValues(seriesList);
     if (!values.length || keys.length < 1) return '<div class="muted">Not enough data for a chart yet.</div>';
-    const lo = o.min !== null ? o.min : Math.min(...values);
-    const hi = o.max !== null ? o.max : Math.max(...values);
+    const lo = o.min !== null ? o.min : 0;
+    const hi = o.max !== null ? o.max : Math.max(...values, lo + 1);
     const span = hi - lo || 1;
-    const x = i => o.pad + (keys.length === 1 ? (o.width - 2 * o.pad) / 2 : i * (o.width - 2 * o.pad) / (keys.length - 1));
-    const y = v => o.height - o.pad - (v - lo) / span * (o.height - 2 * o.pad);
+    const left = o.axis === false ? o.pad : 42;
+    const right = 28;
+    const bottom = o.axis === false ? o.pad : 32;
+    const x = i => left + (keys.length === 1 ? (o.width - left - right) / 2 : i * (o.width - left - right) / (keys.length - 1));
+    const y = v => o.height - bottom - (v - lo) / span * (o.height - bottom - 16);
+    const mid = lo + span / 2;
 
     const lines = seriesList.map((s, si) => {
       const color = s.color || PALETTE[si % PALETTE.length];
-      let path = "";
-      let open = false;
+      let solid = "";
+      let dashed = "";
+      let previous = null;
+      let solidOpen = false;
       const dots = [];
       s.points.forEach((p, i) => {
-        if (p.value === null || !Number.isFinite(p.value)) {
-          open = false;
-          return;
+        if (p.value === null || !Number.isFinite(p.value)) return;
+        const here = x(i).toFixed(1) + "," + y(p.value).toFixed(1);
+        if (previous !== null && i === previous + 1) {
+          solid += (solidOpen ? "L" : "M") + here;
+          solidOpen = true;
+        } else {
+          if (previous !== null) {
+            dashed += "M" + x(previous).toFixed(1) + "," + y(s.points[previous].value).toFixed(1) + "L" + here;
+          }
+          solid += "M" + here;
+          solidOpen = true;
         }
-        path += (open ? "L" : "M") + x(i).toFixed(1) + "," + y(p.value).toFixed(1);
-        open = true;
+        previous = i;
         const hollow = complete && complete[i] === false;
-        dots.push(`<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${o.dot || 3.5}" fill="${hollow ? "none" : color}" stroke="${color}" stroke-width="1.5"><title>${esc(s.name)} · ${esc(keys[i])}: ${num(p.value)}${p.sample !== undefined ? " (" + p.sample + " matches)" : ""}${hollow ? " · in progress" : ""}</title></circle>`);
+        dots.push(`<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${o.dot || 3.5}" fill="${hollow ? "#14251d" : color}" stroke="${color}" stroke-width="1.5"><title>${esc(s.name)} · ${esc(keys[i])}: ${num(p.value)}${p.sample !== undefined ? " (" + p.sample + " matches)" : ""}${hollow ? " · in progress" : ""}</title></circle>`);
       });
-      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="${o.stroke || 2}" stroke-linejoin="round"/>${dots.join("")}`;
+      const stroke = `fill="none" stroke="${color}" stroke-width="${o.stroke || 2.5}" stroke-linecap="round" stroke-linejoin="round"`;
+      return `<path d="${solid}" ${stroke}/>${dashed ? `<path d="${dashed}" ${stroke} stroke-dasharray="4 4" opacity="0.45"/>` : ""}${dots.join("")}`;
     }).join("");
 
+    const grid = [hi, mid, lo].map(v =>
+      `<line x1="${left}" y1="${y(v).toFixed(1)}" x2="${o.width - right}" y2="${y(v).toFixed(1)}" stroke="rgba(240,248,241,0.12)"/>`
+    ).join("");
+    const labelStep = Math.max(1, Math.ceil(keys.length / 6));
     const axis = o.axis === false ? "" : `
-      <text x="4" y="${y(hi) + 4}" class="axis">${num(hi, 0)}</text>
+      ${grid}
+      <text x="4" y="${y(hi) + 4}" class="axis">${num(hi, hi >= 10 ? 0 : 1)}</text>
       <text x="4" y="${y(lo) + 4}" class="axis">${num(lo, 0)}</text>
-      ${keys.map((k, i) => (keys.length <= 8 || i % Math.ceil(keys.length / 8) === 0)
-        ? `<text x="${x(i)}" y="${o.height - 6}" class="axis" text-anchor="middle">${esc(k.slice(5))}</text>` : "").join("")}`;
+      ${keys.map((k, i) => {
+        if (i % labelStep !== 0 && i !== keys.length - 1) return "";
+        const anchor = i === 0 ? "start" : i === keys.length - 1 ? "end" : "middle";
+        return `<text x="${x(i)}" y="${o.height - 8}" class="axis" text-anchor="${anchor}">${esc(k.slice(5))}</text>`;
+      }).join("")}`;
 
     return `<svg viewBox="0 0 ${o.width} ${o.height}" class="chart" role="img" aria-label="${esc(o.label || "trend chart")}">${axis}${lines}</svg>`;
   }
@@ -152,13 +178,10 @@
     $("filters").innerHTML = `
       <label>Club<select data-filter="club">${opt("all", "All clubs", state.club)}${clubs.map(([id, name]) => opt(id, name, state.club)).join("")}</select></label>
       <label>Period<select data-filter="period">${I.PERIODS.map(p => opt(p.key, p.label, state.period)).join("")}</select></label>
-      <label>Matches<select data-filter="matchType">${I.MATCH_TYPES.map(t => opt(t.key, t.label, state.matchType)).join("")}</select></label>
-      <label>Position<select data-filter="group">${opt("all", "All positions", state.group)}${S.GROUPS.filter(g => g !== "GK").map(g => opt(g, S.GROUP_LABELS[g] + "s", state.group)).join("")}</select></label>
-      <label>Min. matches<select data-filter="minMatches">${[1, 3, 5, 10].map(n => opt(n, n + (n === 1 ? " match" : " matches"), state.minMatches)).join("")}</select></label>`;
+      <label>Position<select data-filter="group">${opt("all", "All positions", state.group)}${S.GROUPS.filter(g => g !== "GK").map(g => opt(g, S.GROUP_LABELS[g] + "s", state.group)).join("")}</select></label>`;
     document.querySelectorAll("[data-filter]").forEach(el => {
       el.onchange = () => {
-        const key = el.dataset.filter;
-        state[key] = key === "minMatches" ? Number(el.value) : el.value;
+        state[el.dataset.filter] = el.value;
         render();
       };
     });
@@ -314,9 +337,9 @@
 
     $("rankings").innerHTML = `
       <h2>🏆 Panda Score standings</h2>
-      <p>Position-adjusted overall performance.${esc(groupNote)} Qualified players have ${state.minMatches}+ scored matches.</p>
+      <p>Position-adjusted overall performance.${esc(groupNote)} A player needs 3 scored matches before they are ranked.</p>
       ${scoreExplainer()}
-      <div class="panel">${scored || '<div class="muted">No qualified players. Lower the minimum matches.</div>'}</div>
+      <div class="panel">${scored || '<div class="muted">No player has 3 scored matches in this filter yet.</div>'}</div>
       ${provisional ? `<details class="panel"><summary>${rk.scores.provisional.length} provisional players</summary>${provisional}</details>` : ""}
       <h2>Category leaderboards</h2>
       <div class="buttons scroll">${catButtons}</div>
@@ -329,8 +352,11 @@
     const e = model.evolution;
     const opt = (v, l, c) => `<option value="${esc(v)}" ${v === c ? "selected" : ""}>${esc(l)}</option>`;
     const metricOptions = EVOLUTION_METRICS.map(k => opt(k, k === "pandaScore" ? "Panda Score" : S.getMetric(k).label, state.evolutionMetric)).join("");
-    const unit = e.metric !== "pandaScore" && S.getMetric(e.metric).type === "ratio" ? " pp" : "";
-    const scale = e.metric === "pandaScore" ? { min: 0, max: 100 } : {};
+    const metric = e.metric === "pandaScore" ? null : S.getMetric(e.metric);
+    const unit = metric && metric.type === "ratio" ? " pp" : "";
+    const shared = e.series.concat([{ points: e.squad }]);
+    const peak = Math.max(0, ...finiteValues(shared));
+    const scale = !metric || metric.type === "ratio" ? { min: 0, max: 100 } : { min: 0, max: Math.max(1, Math.ceil(peak)) };
 
     const movers = (list, title) => `<div class="panel"><h3>${esc(title)}</h3>${list.length ? list.map(m =>
       `<div class="mover"><b>${esc(m.name)}</b><span class="${m.change > 0 ? "up" : "down"}">${signed(m.change, 1, unit)}</span><span class="muted small">${esc(m.from)} → ${esc(m.to)} (${m.samples[0]} → ${m.samples[1]} matches)</span></div>`).join("")
@@ -374,6 +400,9 @@
     if (m.type === "ratio") {
       main = m.rate === null ? "—" : num(m.rate) + "%";
       detail = m.denominator ? `${m.numerator} of ${m.denominator}` : "No attempts";
+    } else if (m.confidence === "experimental" && !m.coverage.withData) {
+      main = "—";
+      detail = "No event log on these matches, so this count was not recorded.";
     } else {
       main = m.per90 !== null ? num(m.per90, 2) : num(m.perMatch, 2);
       detail = `${m.total === null ? "—" : m.total} total · ${num(m.perMatch, 2)}/match${m.per90 !== null ? " · per 90 shown" : ""}`;

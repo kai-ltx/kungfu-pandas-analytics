@@ -461,7 +461,9 @@ var PandaStats = (function () {
 
   function rowHasData(row, metric) {
     if (!isAppearance(row) || !rowEligible(row, metric)) return false;
-    if (metric.source === "event" && !eventsUsable(row)) return false;
+    // Experimental counts are already extracted. An incomplete log still has a
+    // number; a blank field means the log was never stored.
+    if (metric.source === "event" && metric.confidence !== "experimental" && !eventsUsable(row)) return false;
     return requiredFields(metric).every(field => toNumber(row[field]) !== null);
   }
 
