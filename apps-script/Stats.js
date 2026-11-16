@@ -435,6 +435,19 @@ var PandaStats = (function () {
     return "sum(" + metric.fields.join(" + ") + ")";
   }
 
+  // Names for EA's archetype ids 1-13, in the order proclubsbuilder.co.uk lists
+  // them. EA does not publish these names. Treat them as a community mapping,
+  // not a verified one, and show the raw id as well.
+  const ARCHETYPE_NAMES = {
+    1: "Shot Stopper", 2: "Sweeper Keeper", 3: "Progressor", 4: "Boss", 5: "Marauder",
+    6: "Disruptor", 7: "Recycler", 8: "Maestro", 9: "Creator", 10: "Spark",
+    11: "Magician", 12: "Finisher", 13: "Target"
+  };
+
+  function archetypeName(id) {
+    return ARCHETYPE_NAMES[String(id)] || null;
+  }
+
   // Experimental community event ids. The raw log is never sent to the
   // browser; these four counts are copied onto the row instead.
   const EXPERIMENTAL_FIELDS = {
@@ -953,6 +966,7 @@ var PandaStats = (function () {
     SCORE_SETTINGS,
     EXPERIMENTAL_FIELDS,
     experimentalFields,
+    archetypeName,
     positionGroup,
     toNumber,
     isAppearance,

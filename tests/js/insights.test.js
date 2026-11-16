@@ -224,6 +224,14 @@ test("squad cards flag tentative position groups and expose no EA ids", () => {
   assert.deepEqual(plain(scores), plain(scores).slice().sort((a, b) => b - a));
 });
 
+test("archetype ids 1-13 map to the community names in list order", () => {
+  const names = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(id => S.archetypeName(id));
+  assert.deepEqual(names, ["Shot Stopper", "Sweeper Keeper", "Progressor", "Boss", "Marauder",
+    "Disruptor", "Recycler", "Maestro", "Creator", "Spark", "Magician", "Finisher", "Target"]);
+  assert.equal(S.archetypeName(14), null);
+  assert.equal(S.archetypeName(undefined), null);
+});
+
 test("score rankings use competition ranking and keep provisional players unranked", () => {
   const r = I.rankScores([
     { id: "a", score: 60, status: "qualified" }, { id: "b", score: 60, status: "qualified" },

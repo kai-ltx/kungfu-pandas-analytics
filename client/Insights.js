@@ -735,7 +735,7 @@ var PandaInsights = (function () {
         goals: S.aggregate(t.rows, "goals").total,
         assists: S.aggregate(t.rows, "assists").total,
         rating: S.aggregate(t.rows, "rating").mean,
-        archetype: topArch ? { id: topArch[0], appearances: topArch[1] } : null,
+        archetype: topArch ? { id: topArch[0], name: S.archetypeName(topArch[0]), appearances: topArch[1] } : null,
         strengths: t.strengths
       };
     }).sort((a, b) => (b.score === null ? -1 : b.score) - (a.score === null ? -1 : a.score));

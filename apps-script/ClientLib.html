@@ -438,6 +438,19 @@ var PandaStats = (function () {
     return "sum(" + metric.fields.join(" + ") + ")";
   }
 
+  // Names for EA's archetype ids 1-13, in the order proclubsbuilder.co.uk lists
+  // them. EA does not publish these names. Treat them as a community mapping,
+  // not a verified one, and show the raw id as well.
+  const ARCHETYPE_NAMES = {
+    1: "Shot Stopper", 2: "Sweeper Keeper", 3: "Progressor", 4: "Boss", 5: "Marauder",
+    6: "Disruptor", 7: "Recycler", 8: "Maestro", 9: "Creator", 10: "Spark",
+    11: "Magician", 12: "Finisher", 13: "Target"
+  };
+
+  function archetypeName(id) {
+    return ARCHETYPE_NAMES[String(id)] || null;
+  }
+
   // Experimental community event ids. The raw log is never sent to the
   // browser; these four counts are copied onto the row instead.
   const EXPERIMENTAL_FIELDS = {
@@ -956,6 +969,7 @@ var PandaStats = (function () {
     SCORE_SETTINGS,
     EXPERIMENTAL_FIELDS,
     experimentalFields,
+    archetypeName,
     positionGroup,
     toNumber,
     isAppearance,
@@ -1726,7 +1740,7 @@ var PandaInsights = (function () {
         goals: S.aggregate(t.rows, "goals").total,
         assists: S.aggregate(t.rows, "assists").total,
         rating: S.aggregate(t.rows, "rating").mean,
-        archetype: topArch ? { id: topArch[0], appearances: topArch[1] } : null,
+        archetype: topArch ? { id: topArch[0], name: S.archetypeName(topArch[0]), appearances: topArch[1] } : null,
         strengths: t.strengths
       };
     }).sort((a, b) => (b.score === null ? -1 : b.score) - (a.score === null ? -1 : a.score));
@@ -2283,7 +2297,7 @@ var PandaInsights = (function () {
           <div class="muted small">Best Position Finder</div>
           ${p.groups.map(g => `<div class="finder-row"><span>${esc(g.label)}</span>${bar(g.score)}<b>${num(g.score, 0)}</b><span class="muted small">${g.appearances} apps${g.tentative ? " · tentative" : ""}</span></div>`).join("") || '<div class="muted small">No scored matches</div>'}
         </div>
-        <div class="muted small">${p.archetype ? "Most used archetype: #" + esc(p.archetype.id) + " (" + p.archetype.appearances + " apps) — EA doesn't publish archetype names" : "Archetype unknown"}</div>
+        <div class="muted small">${p.archetype ? "Most used archetype: " + esc(p.archetype.name ? p.archetype.name + " (#" + p.archetype.id + ")" : "#" + p.archetype.id) + " · " + p.archetype.appearances + " apps" + (p.archetype.name ? " · community names, not published by EA" : "") : "Archetype unknown"}</div>
       </div>`).join("");
     $("squad").innerHTML = `
       <h2>🃏 Squad & Builds</h2>

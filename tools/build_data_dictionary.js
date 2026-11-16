@@ -21,7 +21,7 @@ const STORED_FIELDS = [
   ["dnf", "Match", "A club quit and the other was awarded the win.", "verified"],
   ["position", "Appearance", "EA pos for this match: forward, midfielder, defender or goalkeeper. Group only; exact positions are not in the API.", "verified"],
   ["positionGroup", "Appearance", "ATT / MID / DEF / GK derived from position.", "verified"],
-  ["archetypeId", "Appearance", "EA archetype id for this match (1-13 observed). No verified id-to-name mapping.", "experimental"],
+  ["archetypeId", "Appearance", "EA archetype id for this match (1-13). Named from a community list (proclubsbuilder.co.uk) that EA does not publish; the id is the verified value.", "experimental"],
   ["secondsPlayed", "Appearance", "EA game-clock seconds. Identical for every player in 59 of 66 sampled line-ups (usually match length); lower for late joiners. Used for per-90.", "medium"],
   ["realTimeSeconds", "Appearance", "EA realtimegame (wall-clock seconds).", "verified"],
   ["rating", "Appearance", "EA match rating.", "verified"],
@@ -94,7 +94,7 @@ function render() {
   lines.push("## Not available from the API");
   lines.push("");
   lines.push("- Exact position per match (only the group).");
-  lines.push("- Archetype names for `archetypeId`, PlayStyles, attribute allocations, portraits.");
+  lines.push("- Official archetype names for `archetypeId` (the names shown are a community list), PlayStyles, attribute allocations, portraits.");
   lines.push("- Lost aerial duels (so no aerial success rate), xG/xA, distance, metres progressed, pressing.");
   lines.push("- Goalkeeper appearances: none in samples (AI keepers).");
   lines.push("");

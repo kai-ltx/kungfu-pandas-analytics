@@ -478,7 +478,7 @@
           <div class="muted small">Best Position Finder</div>
           ${p.groups.map(g => `<div class="finder-row"><span>${esc(g.label)}</span>${bar(g.score)}<b>${num(g.score, 0)}</b><span class="muted small">${g.appearances} apps${g.tentative ? " · tentative" : ""}</span></div>`).join("") || '<div class="muted small">No scored matches</div>'}
         </div>
-        <div class="muted small">${p.archetype ? "Most used archetype: #" + esc(p.archetype.id) + " (" + p.archetype.appearances + " apps) — EA doesn't publish archetype names" : "Archetype unknown"}</div>
+        <div class="muted small">${p.archetype ? "Most used archetype: " + esc(p.archetype.name ? p.archetype.name + " (#" + p.archetype.id + ")" : "#" + p.archetype.id) + " · " + p.archetype.appearances + " apps" + (p.archetype.name ? " · community names, not published by EA" : "") : "Archetype unknown"}</div>
       </div>`).join("");
     $("squad").innerHTML = `
       <h2>🃏 Squad & Builds</h2>
