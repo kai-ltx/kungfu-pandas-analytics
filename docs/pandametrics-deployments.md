@@ -49,6 +49,29 @@ clasp redeploy <dashboard id, AKfycbw0HTqAppZ3…> -V 8 -d "Rollback to Dashboar
 
 To return head to V3.2, push the saved `build/prod-backup/8/` sources. Then revert `main` to `5bad9e7` so the V3 importer runs again. Rows written by V4 keep text match ids and extra columns, and the V3 dashboard reads them (covered by `tests/js/history.test.js`).
 
+## V4.1 release, 16 November 2026
+
+Approved for production and released from commit `8e7017b` (`feature/v4.1-clubhouse`, fast-forwarded into `main`), the same code as test version 3 apart from the test spreadsheet guard.
+
+| Prefix | Before | After | Description |
+|---|---|---|---|
+| `AKfycbxlZ6HiZObu` (webhook) | 9 | 14 | PandaMetrics V4.1 webhook (rollback: v9) |
+| `AKfycbw0HTqAppZ3` (dashboard) | 13 | 14 | PandaMetrics V4.1 dashboard (rollback: v13) |
+| `AKfycbzVvMEVHG52` (head) | V4 code | V4.1 code | Follows every push |
+
+The manifest and OAuth scopes are unchanged. The webhook now completes rows whose event log was cut short (`eventCoverage` incomplete or missing) when a complete copy arrives; complete and legacy rows are never rewritten. The workflow adds a second run at minute 37 of each evening hour.
+
+Checks after release: the dashboard loads anonymously with the V4.1 header, and a manual importer run on `main` succeeded for all three clubs with no duplicate rows.
+
+Rollback, from `apps-script/`:
+
+```
+clasp redeploy <webhook id, AKfycbxlZ6HiZObu…> -V 9 -d "Rollback to V4 webhook"
+clasp redeploy <dashboard id, AKfycbw0HTqAppZ3…> -V 13 -d "Rollback to V4 dashboard"
+```
+
+Then revert `main` to `3be3f10` so the V4 importer and schedule run again. Rows upgraded by V4.1 keep the same columns and stay readable by V4.
+
 ## Isolated test environment
 
 Created 12 November 2026. Production deployments above were listed again after this and were unchanged.
