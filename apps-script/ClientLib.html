@@ -200,13 +200,15 @@ var PandaStats = (function () {
       { minAttempts: 8 }),
     m("offsidePasses", "Passes into offside", "passing", "count",
       { fields: ["offsidePasses"] }, "event", "high", false,
-      "Passes to a team-mate who was caught offside. Not the same as this player being offside."),
+      "Passes to a team-mate who was caught offside. Not the same as this player being offside.",
+      { display: "total" }),
 
     // Attacking & finishing
     m("goals", "Goals", "attacking", "count", { fields: ["goals"] },
-      "ea", "verified", true, "Goals scored (EA named total)."),
+      "ea", "verified", true, "Goals scored (EA named total).", { display: "total" }),
     m("goalInvolvements", "Goal involvements", "attacking", "count",
-      { fields: ["goals", "assists"] }, "ea", "verified", true, "Goals plus assists."),
+      { fields: ["goals", "assists"] }, "ea", "verified", true, "Goals plus assists.",
+      { display: "total" }),
     m("shots", "Shots", "attacking", "count", { fields: ["shots"] },
       "ea", "verified", true, "Shots taken (EA named total)."),
     m("shotAccuracy", "Shot accuracy", "attacking", "ratio",
@@ -220,13 +222,16 @@ var PandaStats = (function () {
       { minAttempts: 5, shrinkage: 3 }),
     m("goalsFirstTime", "First-time goals", "attacking", "count",
       { fields: ["goalsFirstTime"] }, "event", "high", true,
-      "Goals from first-time shots. A tag on goals: never add to the goal total."),
+      "Goals from first-time shots. A tag on goals: never add to the goal total.",
+      { display: "total" }),
     m("goalsWeakFoot", "Weak-foot goals", "attacking", "count",
       { fields: ["goalsWeakFoot"] }, "event", "high", true,
-      "Goals with the weak foot. A tag on goals: never add to the goal total."),
+      "Goals with the weak foot. A tag on goals: never add to the goal total.",
+      { display: "total" }),
     m("goalsOffPost", "Goals off the post", "attacking", "count",
       { fields: ["goalsOffPost"] }, "event", "high", true,
-      "Goals that went in off the post. A tag on goals: never add to the goal total."),
+      "Goals that went in off the post. A tag on goals: never add to the goal total.",
+      { display: "total" }),
     m("shotsInsideBox", "Shots inside the box", "attacking", "count",
       { fields: ["shotsOnTargetInsideBox", "shotsOffTargetInsideBox"] }, "event", "high", true,
       "Shots from inside the box, on and off target.",
@@ -238,14 +243,16 @@ var PandaStats = (function () {
 
     // Creativity
     m("assists", "Assists", "creativity", "count", { fields: ["assists"] },
-      "ea", "verified", true, "Assists (EA named total)."),
+      "ea", "verified", true, "Assists (EA named total).", { display: "total" }),
     m("secondAssists", "Second assists", "creativity", "count",
-      { fields: ["secondAssists"] }, "event", "high", true, "The pass before the assist."),
+      { fields: ["secondAssists"] }, "event", "high", true, "The pass before the assist.",
+      { display: "total" }),
     m("throughPasses", "Through balls", "creativity", "count",
       { fields: ["throughPasses"] }, "event", "high", true, "Successful through balls."),
     m("throughBallAssists", "Through-ball assists", "creativity", "count",
       { fields: ["throughBallAssists"] }, "event", "high", true,
-      "Assists from through balls. A tag on assists: never add to the assist total."),
+      "Assists from through balls. A tag on assists: never add to the assist total.",
+      { display: "total" }),
 
     // Defending
     m("tacklesWon", "Tackles won", "defending", "count", { fields: ["tacklesMade"] },
@@ -273,7 +280,8 @@ var PandaStats = (function () {
       { fields: ["aerialDuelsWonAttacking"] }, "event", "high", true,
       "Aerial duels won while attacking. No success rate: lost duels are not decoded."),
     m("dangerousTackles", "Dangerous tackles", "discipline", "count",
-      { fields: ["dangerousTackles"] }, "event", "high", false, "Dangerous tackles."),
+      { fields: ["dangerousTackles"] }, "event", "high", false, "Dangerous tackles.",
+      { display: "total" }),
 
     // Possession
     m("possessionWon", "Possession won", "possession", "count",
@@ -332,11 +340,13 @@ var PandaStats = (function () {
     m("foulsConceded", "Fouls conceded", "discipline", "count",
       { fields: ["foulsConceded"] }, "event", "high", false, "Fouls committed."),
     m("yellowCards", "Yellow cards", "discipline", "count",
-      { fields: ["yellowCards"] }, "event", "high", false, "Yellow cards."),
+      { fields: ["yellowCards"] }, "event", "high", false, "Yellow cards.",
+      { display: "total" }),
     m("redCards", "Red cards", "discipline", "count", { fields: ["redCards"] },
-      "ea", "verified", false, "Red cards (EA named total)."),
+      "ea", "verified", false, "Red cards (EA named total).", { display: "total" }),
     m("penaltiesConceded", "Penalties conceded", "discipline", "count",
-      { fields: ["penaltiesConceded"] }, "event", "high", false, "Penalties given away."),
+      { fields: ["penaltiesConceded"] }, "event", "high", false, "Penalties given away.",
+      { display: "total" }),
     m("foulsWon", "Fouls won", "discipline", "count",
       { fields: ["foulsWon"] }, "event", "high", null, "Times this player was fouled."),
 
@@ -348,11 +358,12 @@ var PandaStats = (function () {
       "Goals conceded while on the pitch (EA named total).",
       { strengthLabel: "Hard to beat", weaknessLabel: "Concedes often" }),
     m("cornersTaken", "Corners taken", "specialist", "count",
-      { fields: ["cornersTaken"] }, "event", "high", null, "Corners taken."),
+      { fields: ["cornersTaken"] }, "event", "high", null, "Corners taken.",
+      { display: "total" }),
     m("cleanSheets", "Clean sheets", "specialist", "count",
       { fields: ["cleanSheetDef", "cleanSheetGK"] }, "ea", "verified", true,
       "Clean sheets EA awarded for this appearance. Counted for defenders and goalkeepers only.",
-      { eligibleGroups: ["DEF", "GK"] }),
+      { eligibleGroups: ["DEF", "GK"], display: "total" }),
     m("saveRate", "Save rate", "specialist", "ratio",
       { numerator: ["saves"], denominator: ["saves", "goalsConceded"] },
       "derived", "medium", true,
@@ -360,22 +371,25 @@ var PandaStats = (function () {
       { minAttempts: 5, shrinkage: 3, eligibleGroups: ["GK"] }),
     m("manOfTheMatch", "EA man of the match", "specialist", "count",
       { fields: ["manOfTheMatch"] }, "ea", "verified", true,
-      "Times EA named this player man of the match. Shown as a fun fact, not as an overall ranking."),
+      "Times EA named this player man of the match. Shown as a fun fact, not as an overall ranking.",
+      { display: "total" }),
 
     // Experimental community ids. Mappings are partial; never used in scores or awards.
     m("expPlayerOffside", "Caught offside", "experimental", "count",
       { fields: ["expPlayerOffside"] }, "event", "experimental", false,
       "Times this player was caught offside. Experimental mapping of event 104; the count is often short.",
-      { overlap: "Not the same as a pass that put a team-mate offside." }),
+      { overlap: "Not the same as a pass that put a team-mate offside.", display: "total" }),
     m("expBadPass", "Bad pass", "experimental", "count",
       { fields: ["expBadPass"] }, "event", "experimental", false,
-      "Experimental mapping of event 151, possibly a hospital or poor pass. Not verified enough to score."),
+      "Experimental mapping of event 151, possibly a hospital or poor pass. Not verified enough to score.",
+      { display: "total" }),
     m("expOpenPlayCrosses", "Open-play crosses", "experimental", "count",
       { fields: ["expOpenPlayCrosses"] }, "event", "experimental", null,
       "Experimental mapping of event 157: open-play crosses attempted. Add event 145 when a corner is crossed."),
     m("expShouldHaveShot", "Should have shot", "experimental", "count",
       { fields: ["expShouldHaveShot"] }, "event", "experimental", false,
-      "Experimental mapping of event 179: EA thought a shot was on. Checked on only a handful of matches."),
+      "Experimental mapping of event 179: EA thought a shot was on. Checked on only a handful of matches.",
+      { display: "total" }),
 
     // Overall
     m("rating", "EA match rating", "overall", "mean", { fields: ["rating"] },
@@ -1468,9 +1482,10 @@ var PandaInsights = (function () {
   function categoryRankings(players, category, state) {
     return category.metrics.map(key => {
       const metric = S.getMetric(key);
-      const view = metric.type === "count" ? "per90" : "rate";
+      const asTotal = metric.display === "total";
+      const view = metric.type === "ratio" ? "rate" : asTotal ? "total" : "per90";
       const r = S.rank(players, key, { minMatches: state.minMatches, view });
-      const usePerMatch = metric.type === "count" && r.ranked.concat(r.provisional).every(e => e.aggregate.per90 === null);
+      const usePerMatch = !asTotal && metric.type === "count" && r.ranked.concat(r.provisional).every(e => e.aggregate.per90 === null);
       const ranking = usePerMatch ? S.rank(players, key, { minMatches: state.minMatches, view: "perMatch" }) : r;
       return {
         key,
@@ -1479,7 +1494,7 @@ var PandaInsights = (function () {
         confidence: metric.confidence,
         formula: S.formula(metric),
         direction: metric.higherIsBetter === null ? "context" : metric.higherIsBetter ? "higher" : "lower",
-        unit: metric.type === "ratio" ? "%" : usePerMatch ? "per match" : "per 90",
+        unit: metric.type === "ratio" ? "%" : asTotal ? "total" : usePerMatch ? "per match" : "per 90",
         minAttempts: metric.minAttempts,
         ranking
       };
@@ -1518,6 +1533,7 @@ var PandaInsights = (function () {
       const metric = S.getMetric(metricKey);
       const agg = S.aggregate(pRows, metricKey);
       const value = metric.type === "ratio" ? agg.rate : metric.type === "mean" ? agg.mean
+        : metric.display === "total" ? agg.total
         : agg.per90 !== null ? agg.per90 : agg.perMatch;
       return { value, sample: agg.matchesWithData };
     };
@@ -1637,6 +1653,7 @@ var PandaInsights = (function () {
           description: metric.description,
           confidence: metric.confidence,
           type: metric.type,
+          display: metric.display === "total" ? "total" : metric.type === "ratio" ? "rate" : "per90",
           direction: metric.higherIsBetter,
           total: agg.total,
           perMatch: agg.perMatch,
@@ -2073,6 +2090,7 @@ var PandaInsights = (function () {
   function metricValue(entry, rk) {
     const a = entry.aggregate;
     if (rk.unit === "%") return { main: num(entry.value) + "%", detail: `${a.numerator}/${a.denominator}` };
+    if (rk.unit === "total") return { main: a.total === null ? "—" : String(Math.round(a.total)), detail: `${a.matchesWithData} matches` };
     if (rk.unit === "per 90") return { main: num(entry.value, 2), detail: `${a.total} total · ${num(a.perMatch, 2)}/match` };
     return { main: num(entry.value, 2), detail: `${a.total} total` };
   }
@@ -2191,11 +2209,14 @@ var PandaInsights = (function () {
     } else if (m.confidence === "experimental" && !m.coverage.withData) {
       main = "—";
       detail = "No event log on these matches, so this count was not recorded.";
+    } else if (m.display === "total") {
+      main = m.total === null ? "—" : String(Math.round(m.total));
+      detail = "Total recorded in this filter.";
     } else {
       main = m.per90 !== null ? num(m.per90, 2) : num(m.perMatch, 2);
       detail = `${m.total === null ? "—" : m.total} total · ${num(m.perMatch, 2)}/match${m.per90 !== null ? " · per 90 shown" : ""}`;
     }
-    const peer = m.peer === null ? "" : `<div class="peer">Typical for your positions: ${m.type === "ratio" ? num(m.peer) + "%" : num(m.peer, 2)}</div>`;
+    const peer = m.display === "total" || m.peer === null ? "" : `<div class="peer">Typical for your positions: ${m.type === "ratio" ? num(m.peer) + "%" : num(m.peer, 2)}</div>`;
     return `<div class="metric-card ${m.status === "provisional" ? "provisional" : ""}">
       <div class="metric-label">${esc(m.label)} ${badge(m.confidence)}</div>
       <div class="metric-value">${esc(main)}</div>

@@ -491,9 +491,10 @@ var PandaInsights = (function () {
   function categoryRankings(players, category, state) {
     return category.metrics.map(key => {
       const metric = S.getMetric(key);
-      const view = metric.type === "count" ? "per90" : "rate";
+      const asTotal = metric.display === "total";
+      const view = metric.type === "ratio" ? "rate" : asTotal ? "total" : "per90";
       const r = S.rank(players, key, { minMatches: state.minMatches, view });
-      const usePerMatch = metric.type === "count" && r.ranked.concat(r.provisional).every(e => e.aggregate.per90 === null);
+      const usePerMatch = !asTotal && metric.type === "count" && r.ranked.concat(r.provisional).every(e => e.aggregate.per90 === null);
       const ranking = usePerMatch ? S.rank(players, key, { minMatches: state.minMatches, view: "perMatch" }) : r;
       return {
         key,
@@ -502,7 +503,7 @@ var PandaInsights = (function () {
         confidence: metric.confidence,
         formula: S.formula(metric),
         direction: metric.higherIsBetter === null ? "context" : metric.higherIsBetter ? "higher" : "lower",
-        unit: metric.type === "ratio" ? "%" : usePerMatch ? "per match" : "per 90",
+        unit: metric.type === "ratio" ? "%" : asTotal ? "total" : usePerMatch ? "per match" : "per 90",
         minAttempts: metric.minAttempts,
         ranking
       };
@@ -541,6 +542,7 @@ var PandaInsights = (function () {
       const metric = S.getMetric(metricKey);
       const agg = S.aggregate(pRows, metricKey);
       const value = metric.type === "ratio" ? agg.rate : metric.type === "mean" ? agg.mean
+        : metric.display === "total" ? agg.total
         : agg.per90 !== null ? agg.per90 : agg.perMatch;
       return { value, sample: agg.matchesWithData };
     };
@@ -660,6 +662,7 @@ var PandaInsights = (function () {
           description: metric.description,
           confidence: metric.confidence,
           type: metric.type,
+          display: metric.display === "total" ? "total" : metric.type === "ratio" ? "rate" : "per90",
           direction: metric.higherIsBetter,
           total: agg.total,
           perMatch: agg.perMatch,

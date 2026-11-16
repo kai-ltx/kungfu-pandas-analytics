@@ -285,6 +285,7 @@
   function metricValue(entry, rk) {
     const a = entry.aggregate;
     if (rk.unit === "%") return { main: num(entry.value) + "%", detail: `${a.numerator}/${a.denominator}` };
+    if (rk.unit === "total") return { main: a.total === null ? "—" : String(Math.round(a.total)), detail: `${a.matchesWithData} matches` };
     if (rk.unit === "per 90") return { main: num(entry.value, 2), detail: `${a.total} total · ${num(a.perMatch, 2)}/match` };
     return { main: num(entry.value, 2), detail: `${a.total} total` };
   }
@@ -403,11 +404,14 @@
     } else if (m.confidence === "experimental" && !m.coverage.withData) {
       main = "—";
       detail = "No event log on these matches, so this count was not recorded.";
+    } else if (m.display === "total") {
+      main = m.total === null ? "—" : String(Math.round(m.total));
+      detail = "Total recorded in this filter.";
     } else {
       main = m.per90 !== null ? num(m.per90, 2) : num(m.perMatch, 2);
       detail = `${m.total === null ? "—" : m.total} total · ${num(m.perMatch, 2)}/match${m.per90 !== null ? " · per 90 shown" : ""}`;
     }
-    const peer = m.peer === null ? "" : `<div class="peer">Typical for your positions: ${m.type === "ratio" ? num(m.peer) + "%" : num(m.peer, 2)}</div>`;
+    const peer = m.display === "total" || m.peer === null ? "" : `<div class="peer">Typical for your positions: ${m.type === "ratio" ? num(m.peer) + "%" : num(m.peer, 2)}</div>`;
     return `<div class="metric-card ${m.status === "provisional" ? "provisional" : ""}">
       <div class="metric-label">${esc(m.label)} ${badge(m.confidence)}</div>
       <div class="metric-value">${esc(main)}</div>

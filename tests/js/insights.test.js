@@ -27,6 +27,22 @@ test("display categories never repeat a metric and only use registered metrics",
   ["dribbleSuccess", "possessionBalance", "passesAttempted"].forEach(k => assert.ok(!all.includes(k), k));
 });
 
+test("rare events rank as totals and accuracies stay percentages", () => {
+  const model = I.build(prepared, { minMatches: 1 }, NOW, null);
+  const passing = model.rankings.categoryRankings("passing");
+  const byKey = key => passing.find(r => r.key === key);
+  assert.equal(byKey("passAccuracy").unit, "%");
+  assert.equal(byKey("passesCompleted").unit, "per 90");
+  const labOffside = model.lab.categories.flatMap(c => c.metrics).find(m => m.key === "expPlayerOffside");
+  const labGoals = model.lab.categories.flatMap(c => c.metrics).find(m => m.key === "goals");
+  const labPasses = model.lab.categories.flatMap(c => c.metrics).find(m => m.key === "passesCompleted");
+  assert.equal(labOffside.display, "total");
+  assert.equal(labGoals.display, "total");
+  assert.equal(labPasses.display, "per90");
+  assert.equal(S.getMetric("offsidePasses").display, "total");
+  assert.equal(S.getMetric("shotAccuracy").type, "ratio");
+});
+
 test("prepare drops duplicates and non-official matches", () => {
   const dup = fixture.players.slice(0, 5);
   const friendly = Object.assign({}, fixture.players[0], { matchId: "999", matchType: "friendlyMatch" });
