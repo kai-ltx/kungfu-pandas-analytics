@@ -210,7 +210,7 @@ test("added awards keep goal and assist totals and stay position-aware", () => {
 test("Panda Lab passing DNA shares add up and categories carry coverage", () => {
   const first = S.groupByPlayer(prepared.rows)[0];
   const l = I.lab(prepared, prepared.rows, first.id, I.DEFAULT_STATE);
-  const shares = l.passingDna.map(d => d.share || 0).reduce((a, b) => a + b, 0);
+  const shares = l.passing.directions.map(d => d.share || 0).reduce((a, b) => a + b, 0);
   assert.ok(Math.abs(shares - 100) < 1e-6 || shares === 0);
   assert.equal(l.categories.length, I.LAB_CATEGORIES.length);
   l.categories.forEach(c => c.metrics.forEach(m => assert.ok(m.coverage.withData <= m.coverage.appearances)));
@@ -239,6 +239,191 @@ test("score rankings use competition ranking and keep provisional players unrank
   ]);
   assert.deepEqual(r.qualified.map(t => t.rank), [1, 1, 3]);
   assert.equal(r.provisional[0].rank, undefined);
+});
+
+// ------------------------------------------------------------ V4.1
+
+const model41 = I.build(prepared, { minMatches: 3 }, NOW, null);
+const players41 = S.groupByPlayer(prepared.rows);
+
+test("Panda Score weights are unchanged by V4.1", () => {
+  assert.deepEqual(plain(S.ROLE_WEIGHTS), {
+    ATT: { goals: 3, assists: 2, shotAccuracy: 1.5, dribblesCompleted: 1, highRecoveries: 1, passAccuracy: 1 },
+    MID: { passAccuracy: 2, forwardPassesCompleted: 2, assists: 1.5, goals: 1, throughPasses: 1, interceptions: 1, tacklesWon: 1, possessionLost: 1 },
+    DEF: { interceptions: 2, defensiveThirdLosses: 2, tackleSuccess: 2, passAccuracy: 1.5, aerialDuelsWonDefending: 1, crossesBlocked: 0.5, outOfPosition: 1 },
+    GK: { saves: 2, goalsConceded: 2, passAccuracy: 1 }
+  });
+});
+
+test("score explanation adds up exactly to the Panda Score", () => {
+  players41.forEach(p => {
+    const score = S.pandaScore(p.rows, prepared.benchmarks).score;
+    const ex = S.explainScore(p.rows, prepared.benchmarks);
+    if (score === null) return assert.equal(ex, null);
+    const points = ex.components.reduce((a, c) => a + c.points, 0);
+    const impact = ex.components.reduce((a, c) => a + c.impact, 0);
+    assert.ok(Math.abs(points - score) < 1e-9, p.name + " points");
+    assert.ok(Math.abs(impact - (score - 50)) < 1e-9, p.name + " impact");
+    ex.strongest.forEach(c => assert.ok(c.impact > 0));
+    ex.weakest.forEach(c => assert.ok(c.impact < 0));
+  });
+});
+
+test("score explanation compares with the teammates ranked either side", () => {
+  const table = I.scoreTable(prepared, prepared.rows, 3);
+  const ranked = I.rankScores(table.slice()).qualified;
+  const middle = ranked[Math.floor(ranked.length / 2)];
+  const ex = I.scoreExplanation(prepared, table, middle.id);
+  assert.equal(ex.above.relation, "above");
+  assert.ok(ex.above.score >= ex.score);
+  assert.ok(ex.below.score <= ex.score);
+  ex.below.reasons.forEach(r => assert.ok(r.diff > 0, "reasons explain why they are ahead"));
+  ex.above.reasons.forEach(r => assert.ok(r.diff < 0, "reasons explain why they are behind"));
+  ex.components.forEach(c => assert.ok(["%", "/90", "/match"].includes(c.unit)));
+});
+
+test("personalities need a sample, a clear margin and label experimental data", () => {
+  const all = model41.awards.personalities;
+  assert.equal(all.awards.length, 12);
+  all.awards.forEach(a => {
+    assert.equal(a.kind, "personality");
+    assert.ok(a.description.length > 10);
+    const def = I.PERSONALITIES.find(d => d.key === a.key);
+    const usesExperimental = def.components.some(c => S.getMetric(c.key).confidence === "experimental");
+    assert.equal(a.experimental, usesExperimental, a.key);
+    if (!a.winner) return;
+    assert.ok(a.index >= 1.25, a.key);
+    assert.ok(a.stats.length > 0 && a.stats.every(s => /typical/.test(s.text)), a.key);
+    const winnerRows = prepared.rows.filter(r => String(r.playerId) === a.winner.id && S.isAppearance(r));
+    assert.ok(winnerRows.length >= 3, a.key + " sample");
+    if (def.groups) assert.ok(winnerRows.some(r => def.groups.includes(S.positionGroup(r))), a.key + " position");
+  });
+  Object.values(all.badges).forEach(list => assert.ok(list.length <= 3));
+  ["shootDonkey", "livesOffside"].forEach(k => assert.equal(all.awards.find(a => a.key === k).experimental, true));
+});
+
+test("personalities are position-aware: an attacker cannot win Brexit Defender", () => {
+  const def = I.PERSONALITIES.find(d => d.key === "brexitDefender");
+  assert.deepEqual(plain(def.groups), ["DEF", "MID"]);
+  const attackersOnly = prepared.rows.filter(r => S.positionGroup(r) === "ATT");
+  const res = I.personalities(prepared, attackersOnly, 1);
+  assert.equal(res.awards.find(a => a.key === "brexitDefender").winner, null);
+});
+
+test("awards are not duplicated between the Wall of Shame and personalities", () => {
+  const shame = model41.awards.shame.map(a => a.key);
+  const persona = model41.awards.personalities.awards.map(a => a.key);
+  assert.ok(!shame.includes("crabKing") && !shame.includes("butterfingers"));
+  assert.equal(shame.filter(k => persona.includes(k)).length, 0);
+  ["pandaOfWeek", "goldenBoot", "assistKing"].forEach(k => assert.ok(model41.awards.hall.some(a => a.key === k)));
+  assert.ok(shame.includes("shotgunTarget"));
+  [model41.awards.hall, model41.awards.shame, model41.awards.personalities.awards].flat().forEach(a => {
+    ["key", "title", "kind", "description", "winner", "value", "stats", "sample"].forEach(f => assert.ok(f in a, a.key + " " + f));
+  });
+});
+
+test("all-time awards ignore the period and position filters but follow the club", () => {
+  const filtered = I.build(prepared, { minMatches: 3, period: "lastWeek", group: "ATT" }, NOW, null);
+  const winners = m => m.awards.hall.concat(m.awards.shame).map(a => a.key + ":" + (a.winner && a.winner.id));
+  assert.deepEqual(winners(filtered), winners(model41));
+  assert.ok(!model41.awards.hall.some(a => a.key === "mostImproved"), "Most Improved is weekly only");
+  const bamboo = model41.overview.bamboo;
+  assert.ok(bamboo.awards.hall.some(a => a.key === "mostImproved"));
+  assert.ok(bamboo.personalities.awards.length === 12);
+});
+
+test("form compares the last five matches with the five before, never overlapping", () => {
+  players41.forEach(p => {
+    const f = I.lastFive(prepared, p.rows, "pandaScore");
+    assert.ok(f.last.sample <= 5 && f.previous.sample <= 5);
+    if (f.ready) {
+      assert.ok(f.last.sample >= 3 && f.previous.sample >= 3);
+      assert.ok(Math.abs(f.change - (f.last.value - f.previous.value)) < 1e-9);
+    } else {
+      assert.equal(f.change, null);
+      assert.match(f.needs, /Needs 3\+/);
+    }
+  });
+  const week = I.periodCompare(prepared, players41[0].rows, "pandaScore", "week", NOW);
+  if (week.current) assert.equal(week.previous.key, S.previousPeriodKey(week.current.key, "week"));
+});
+
+test("form trends judge lower-is-better stats correctly", () => {
+  let checked = 0;
+  players41.forEach(p => {
+    const f = I.lastFive(prepared, p.rows, "possessionLost");
+    if (!f.ready || f.trend.direction === "steady") return;
+    assert.equal(f.trend.good, f.change < 0, p.name);
+    checked++;
+  });
+  const goals = I.lastFive(prepared, players41[0].rows, "goals");
+  assert.ok(goals.last.value === null || goals.last.value <= 5, "totals are compared per match");
+  assert.ok(checked >= 0);
+});
+
+test("directional passing shares unrecorded failures and never reads higher than recorded", () => {
+  const row = { appearanceStatus: "played", eventCoverage: "complete", passAttempts: 120, passesMade: 90,
+    passesCompletedForward: 40, passesFailedForward: 10, passesCompletedBackward: 20, passesFailedBackward: 0,
+    passesCompletedSideways: 30, passesFailedSideways: 10 };
+  const d = S.directionalPassing([row]);
+  const by = k => d.directions.find(x => x.direction === k);
+  assert.equal(d.unrecordedFailed, 10);
+  assert.ok(Math.abs(by("Forward").accuracy - 40 / 55 * 100) < 1e-9);
+  assert.equal(by("Forward").recordedAccuracy, 80);
+  assert.equal(by("Backward").accuracy, 100);
+  assert.ok(Math.abs(by("Sideways").accuracy - 30 / 45 * 100) < 1e-9);
+  players41.forEach(p => S.directionalPassing(p.rows).directions.forEach(x => {
+    if (x.accuracy !== null) assert.ok(x.accuracy <= x.recordedAccuracy + 1e-9);
+  }));
+  assert.equal(S.directionalPassing([Object.assign({}, row, { eventCoverage: "incomplete" })]).matches, 0);
+  assert.throws(() => S.getMetric("forwardPassAccuracy"), /Unknown metric/);
+});
+
+test("archetype advisor: honest basis, new alternatives, confidence and position limits", () => {
+  model41.squad.forEach(card => {
+    const a = card.advisor;
+    assert.match(a.note, /community-inferred/);
+    a.usage.forEach(u => assert.equal(u.proven, u.scoredMatches >= I.ADVISOR.proven));
+    if (a.status !== "ok") {
+      assert.match(a.message, /Needs 4\+/);
+      return;
+    }
+    assert.ok(["Low", "Medium", "High"].includes(a.confidence));
+    const expected = a.scoredInMain >= 15 ? "High" : a.scoredInMain >= 8 ? "Medium" : "Low";
+    assert.equal(a.confidence, expected);
+    const used = new Set(a.usage.map(u => u.id));
+    a.recommendations.forEach(r => {
+      assert.ok(I.ARCHETYPE_PROFILES[r.id].groups.includes(r.group), "archetype fits the group");
+      assert.ok([a.mainGroup, a.secondGroup].includes(r.group));
+      assert.ok(!(r.group !== "GK" && ["1", "2"].includes(r.id)), "no keeper archetypes for outfielders");
+      assert.equal(r.name, S.archetypeName(r.id));
+      if (r.basis === "Proven") assert.ok(a.usage.find(u => u.id === r.id).proven);
+    });
+    const alt = a.recommendations.find(r => r.role === "Alternative playstyle");
+    if (alt) assert.ok(!used.has(alt.id), "alternative must be a new archetype");
+    const ids = a.recommendations.map(r => r.id);
+    assert.equal(new Set(ids).size, ids.length);
+    if (a.change && a.change.ready) {
+      assert.ok(a.change.before.matches >= 3 && a.change.after.matches >= 3);
+    }
+  });
+  const few = prepared.rows.filter(r => String(r.playerId) === players41[0].id).slice(0, 3);
+  assert.equal(I.archetypeAdvisor(prepared, few).status, "insufficient");
+});
+
+test("squad cards carry form, badges and key stats; lab carries explanation and form", () => {
+  model41.squad.forEach(c => {
+    assert.ok(c.badges.length <= 3);
+    assert.ok(c.recent.length <= 5);
+    c.positives.forEach(x => assert.ok(x.impact > 0));
+    c.negatives.forEach(x => assert.ok(x.impact < 0));
+    if (c.bestGroup && c.groups.some(g => !g.tentative)) assert.equal(c.bestGroup.tentative, false);
+  });
+  const l = model41.lab;
+  assert.ok(l.explanation && l.form && Array.isArray(l.badges));
+  assert.ok(model41.overview.clubhouse.funny.length <= 4);
+  model41.overview.clubhouse.hot.forEach(p => assert.equal(p.trend.direction, "up"));
+  model41.overview.clubhouse.cold.forEach(p => assert.equal(p.trend.direction, "down"));
 });
 
 // --------------------------------------------------------- client bundle

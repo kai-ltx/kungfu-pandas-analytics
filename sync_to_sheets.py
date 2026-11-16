@@ -10,9 +10,11 @@
 import json
 import os
 import sys
+import time
 
 import requests
 from fc_clubs_api import FC27API
+from fc_clubs_api.exceptions import FC27ConnectionError, FC27HTTPError, FC27ResponseError
 
 from pandametrics.config import CLUBS, OFFICIAL_MATCH_TYPES, TIMEZONE
 from pandametrics.ingest import collect_club, quality_summary
@@ -40,6 +42,37 @@ def post_club(url, token, club_id, data):
     return result
 
 
+RETRY_DELAYS = (5, 20)
+
+
+def is_transient(error):
+    """Network blips, EA/Google 5xx and rate limits. Auth and data errors are not retried."""
+    if isinstance(error, (FC27ConnectionError, FC27ResponseError, requests.ConnectionError, requests.Timeout)):
+        return True
+    if isinstance(error, FC27HTTPError):
+        return error.status_code >= 500 or error.status_code == 429
+    if isinstance(error, requests.HTTPError) and error.response is not None:
+        return error.response.status_code >= 500 or error.response.status_code == 429
+    # Apps Script answers 200 with success=false when the script lock is busy.
+    if isinstance(error, RuntimeError):
+        return "lock" in str(error).lower() or "timed out" in str(error).lower()
+    return False
+
+
+def with_retries(action, label, delays=None, sleep=None):
+    """Run action(); retry transient failures after each delay. The webhook
+    skips rows it already has, so a retried post cannot create duplicates."""
+    sleep = sleep or time.sleep
+    for delay in (*(RETRY_DELAYS if delays is None else delays), None):
+        try:
+            return action()
+        except Exception as error:
+            if delay is None or not is_transient(error):
+                raise
+            print(f"↻ {label}: {describe_error(error)}; retrying in {delay}s")
+            sleep(delay)
+
+
 def describe_error(error):
     # requests includes the full URL in HTTP error text; the webhook URL is a secret.
     if isinstance(error, requests.HTTPError) and error.response is not None:
@@ -58,8 +91,13 @@ def main():
 
     api = FC27API(timezone=TIMEZONE, output="raw", timeout=20)
 
+    # EA returns at most the 10 most recent matches per type, so a missed run
+    # on a busy night can lose matches for good. Retries make each run count.
     def fetch(club_id, match_type):
-        return api.get_club_matches(club_id, match_type=match_type, count=10)
+        return with_retries(
+            lambda: api.get_club_matches(club_id, match_type=match_type, count=10),
+            f"EA {match_type} for {club_id}",
+        )
 
     total_matches = 0
     total_players = 0
@@ -82,7 +120,10 @@ def main():
             if flags:
                 print(f"Data-quality flags: {flags}")
 
-            result = post_club(webhook_url, webhook_token, club_id, data)
+            result = with_retries(
+                lambda: post_club(webhook_url, webhook_token, club_id, data),
+                f"webhook for {club_name}",
+            )
         except Exception as error:  # one club failing must not block the others
             print(f"❌ {club_name}: {describe_error(error)}")
             failures.append(club_name)
@@ -90,7 +131,9 @@ def main():
 
         matches_added = result.get("matchesAdded", 0)
         players_added = result.get("playersAdded", 0)
-        print(f"✅ {club_name}: {matches_added} new matches, {players_added} new player records")
+        upgraded = result.get("playersUpgraded", 0)
+        print(f"✅ {club_name}: {matches_added} new matches, {players_added} new player records"
+              + (f", {upgraded} cut-short event logs completed" if upgraded else ""))
         total_matches += matches_added
         total_players += players_added
 

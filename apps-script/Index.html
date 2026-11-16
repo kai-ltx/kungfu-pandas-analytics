@@ -155,6 +155,66 @@
     .award-footer { font-size: 12px; color: var(--muted); border-top: 1px solid rgba(255,255,255,.08); padding-top: 6px; min-height: 2.6em; }
     #loading { padding: 40px 0; text-align: center; color: var(--muted); }
 
+    /* V4.1 clubhouse */
+    nav { position: sticky; top: 0; z-index: 5; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin: 0; padding: 8px 16px; background: rgba(9,19,15,.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--border); }
+    nav::-webkit-scrollbar { display: none; }
+    nav button { flex: 0 0 auto; }
+    .filter-bar .filters { margin-bottom: 4px; }
+    .filter-note { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+    .reset-wrap button { width: 100%; }
+    .empty { text-align: center; padding: 28px 16px; }
+    .empty-icon { font-size: 34px; margin-bottom: 6px; }
+    .empty b { display: block; color: var(--text); margin-bottom: 4px; }
+    .trend { font-weight: 800; font-size: 13px; white-space: nowrap; }
+    .trend.good { color: var(--green); }
+    .trend.bad { color: var(--red); }
+    .trend.neutral { color: var(--blue); }
+    .trend.steady, .trend.none { color: var(--muted); }
+    .chip.persona { border-color: var(--gold); color: var(--gold); background: rgba(255,215,106,.08); }
+    .score-link { background: none; border: 0; padding: 0; font-weight: 900; color: var(--text); font-size: 18px; text-decoration: underline dotted rgba(255,255,255,.35); text-underline-offset: 4px; }
+    .score-link.profile-rating { font-size: 48px; color: var(--gold); line-height: 1; }
+    .score-link.card-score { font-size: 40px; color: var(--gold); }
+    .recent { display: inline-flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
+    .recent .dot { min-width: 28px; padding: 3px 5px; border-radius: 7px; font-size: 12px; font-weight: 800; text-align: center; background: var(--surface2); }
+    .recent .dot.hi { background: var(--green2); color: #0b1a12; }
+    .recent .dot.lo { background: var(--red); color: #2a0f0a; }
+    .form-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); }
+    .form-row:last-child { border-bottom: 0; }
+    .form-list { margin-top: 8px; }
+    .explain-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .component-row { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .component-label, .component-value { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; justify-content: space-between; }
+    .impact { position: relative; height: 8px; background: var(--surface2); border-radius: 999px; }
+    .impact::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+    .impact-bar { position: absolute; top: 0; bottom: 0; border-radius: 999px; }
+    .impact-bar.pos { background: var(--green2); }
+    .impact-bar.neg { background: var(--red); }
+    .card-name { font-size: 20px; font-weight: 800; }
+    .card-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .key-stats { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+    .key-stat.good { color: var(--green); }
+    .key-stat.bad { color: var(--red); }
+    .advisor { border-top: 1px solid rgba(255,255,255,.12); padding-top: 6px; }
+    .advisor summary { color: var(--gold); font-weight: 700; }
+    .rec { background: rgba(0,0,0,.22); border-radius: 12px; padding: 10px; margin: 8px 0; }
+    .rec-head { display: flex; justify-content: space-between; align-items: center; }
+    .rec-name { font-weight: 800; margin: 3px 0; }
+    table.arch th, table.arch td { padding: 4px 6px 4px 0; }
+    .award.persona { background: linear-gradient(160deg, #3d3a1c, #14251d); border-color: var(--gold); }
+    .award-player .name-link { font-size: 20px; font-weight: 900; }
+    .award-stats { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+    .award-stats li { margin: 2px 0; }
+    button.mini-award { text-align: left; color: var(--text); white-space: normal; width: 100%; }
+    .mini-award.persona { border-color: var(--gold); }
+    .clubhouse { border-color: var(--gold); }
+
+    @media (min-width: 700px) {
+      nav { justify-content: center; flex-wrap: wrap; }
+      .filter-bar .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .mini-awards { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important; }
+      .component-row { grid-template-columns: minmax(180px, 1.2fr) minmax(120px, 1fr) minmax(170px, 1fr); align-items: center; }
+    }
+
     @media (min-width: 700px) {
       header { padding: 28px 20px 12px; }
       main { padding: 20px; }
@@ -171,22 +231,22 @@
 <body>
   <header>
     <div class="container">
-      <div class="eyebrow">PANDAMETRICS V4</div>
+      <div class="eyebrow">PANDAMETRICS V4.1 · THE FOOTBALL CLUBHOUSE</div>
       <div class="header-row">
         <h1>🐼 The Panda Den</h1>
         <div>
-          <button id="refresh" title="Reload the latest synced data">🔄 Refresh stats</button>
+          <button id="refresh" title="Reload the sheet. New EA matches arrive with the automatic sync.">🔄 Reload stats</button>
           <div id="updated" class="muted small"></div>
         </div>
       </div>
-      <p class="small">Official league and playoff stats for KungFu Pandas, Bamboo Shoots and Torquay. Synced automatically every evening.</p>
-      <nav id="nav" aria-label="Sections"></nav>
+      <p class="small">Official league and playoff stats for KungFu Pandas, Bamboo Shoots and Torquay. New matches are pulled from EA automatically every evening; Reload shows anything already synced.</p>
     </div>
   </header>
+  <nav id="nav" aria-label="Sections"></nav>
   <main>
     <div id="loading">Loading PandaMetrics…</div>
     <div id="app" class="hidden">
-      <div id="filters" class="filters"></div>
+      <div id="filters" class="filter-bar"></div>
       <section id="overview"></section>
       <section id="rankings" class="hidden"></section>
       <section id="evolution" class="hidden"></section>

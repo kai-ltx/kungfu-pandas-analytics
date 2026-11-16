@@ -108,6 +108,57 @@ test("re-running the V4 import is idempotent", () => {
   assert.equal(ss.getSheetByName("Player_Match_Stats").data.length, rowsAfterFirst);
 });
 
+function firstCompletePayload() {
+  const p = Object.values(PAYLOADS.v4).find(x => x.players.some(r => r.eventCoverage === "complete"));
+  const player = p.players.find(r => r.eventCoverage === "complete");
+  return { p, player };
+}
+
+test("a cut-short event log is completed in place by a later complete import", () => {
+  const { ctx, ss } = setup();
+  const { p, player } = firstCompletePayload();
+  const truncated = Object.assign({}, player, { eventCoverage: "incomplete", interceptions: null, eventsAvailable: false });
+  post(ctx, Object.assign({ token: TOKEN }, p, { players: [truncated] }));
+
+  const sheet = ss.getSheetByName("Player_Match_Stats");
+  const headers = () => sheet.data[0];
+  const rowsBefore = sheet.data.length;
+  const result = post(ctx, Object.assign({ token: TOKEN }, p, { players: [player] }));
+
+  assert.equal(result.playersAdded, 0);
+  assert.equal(result.playersUpgraded, 1);
+  assert.equal(sheet.data.length, rowsBefore, "upgrade must not add a row");
+  const row = sheet.data[1];
+  assert.equal(row[headers().indexOf("eventCoverage")], "complete");
+  assert.equal(row[headers().indexOf("interceptions")], player.interceptions);
+  assert.equal(String(row[headers().indexOf("matchId")]), String(player.matchId));
+  const log = ss.getSheetByName("Sync_Log").data;
+  assert.match(String(log[log.length - 1][4]), /^ok \(1 event logs completed\)$/);
+});
+
+test("complete rows and legacy rows are never rewritten by later imports", () => {
+  const { ctx, ss } = setup();
+  const { p, player } = firstCompletePayload();
+  post(ctx, Object.assign({ token: TOKEN }, p, { players: [player] }));
+  const sheet = ss.getSheetByName("Player_Match_Stats");
+  const before = JSON.parse(JSON.stringify(sheet.data));
+  const changed = Object.assign({}, player, { interceptions: 99 });
+  const result = post(ctx, Object.assign({ token: TOKEN }, p, { players: [changed] }));
+  assert.equal(result.playersUpgraded, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(sheet.data)), before);
+
+  const legacy = setup();
+  importAll(legacy.ctx, "v2");
+  const legacySheet = legacy.ss.getSheetByName("Player_Match_Stats");
+  const legacyBefore = JSON.parse(JSON.stringify(legacySheet.data));
+  const upgrades = importAll(legacy.ctx, "v4").reduce((a, r) => a + r.playersUpgraded, 0);
+  assert.equal(upgrades, 0);
+  const width = legacyBefore[0].length;
+  legacyBefore.slice(1).forEach((row, i) => {
+    assert.deepEqual(legacySheet.data[i + 1].slice(0, width), row);
+  });
+});
+
 test("legacy numeric match ids still dedupe and are not rewritten", () => {
   const { ctx, ss } = setup();
   importAll(ctx, "v2");

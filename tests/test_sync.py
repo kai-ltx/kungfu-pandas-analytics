@@ -38,6 +38,7 @@ def env(monkeypatch):
     monkeypatch.setenv("GOOGLE_WEBHOOK_URL", "https://script.google.com/macros/s/SECRET/exec")
     monkeypatch.setenv("WEBHOOK_TOKEN", "test-token")
     monkeypatch.setattr(sync_to_sheets, "FC27API", FakeAPI)
+    monkeypatch.setattr(sync_to_sheets, "RETRY_DELAYS", (0, 0))
 
 
 def test_payload_shape_matches_deployed_webhook(env, monkeypatch):
@@ -73,10 +74,49 @@ def test_one_club_failure_does_not_block_others(env, monkeypatch, capsys):
         sync_to_sheets.main()
 
     assert exc.value.code == 1
-    assert calls == ["454058", "451080", "413965"]
+    # A 500 is retried twice before the club is given up on.
+    assert calls == ["454058", "454058", "454058", "451080", "413965"]
     out = capsys.readouterr().out
     assert "SECRET" not in out
     assert "status 500" in out
+
+
+def test_transient_ea_failure_is_retried_and_recovers(env, monkeypatch, capsys):
+    from fc_clubs_api.exceptions import FC27ConnectionError
+
+    attempts = {"n": 0}
+
+    class FlakyAPI(FakeAPI):
+        def get_club_matches(self, club_id, match_type, count):
+            if club_id == 454058 and match_type == "leagueMatch" and attempts["n"] < 1:
+                attempts["n"] += 1
+                raise FC27ConnectionError("timed out")
+            return super().get_club_matches(club_id, match_type, count)
+
+    monkeypatch.setattr(sync_to_sheets, "FC27API", FlakyAPI)
+    monkeypatch.setattr(
+        sync_to_sheets.requests, "post",
+        lambda *a, **k: FakeResponse({"success": True, "matchesAdded": 0, "playersAdded": 0}),
+    )
+    sync_to_sheets.main()
+    assert attempts["n"] == 1
+    assert "retrying" in capsys.readouterr().out
+
+
+def test_permanent_failures_are_not_retried(env, monkeypatch):
+    from fc_clubs_api.exceptions import FC27HTTPError
+
+    calls = []
+
+    def blocked():
+        calls.append(1)
+        raise FC27HTTPError(403, "https://proclubs.ea.com/api/fc/clubs/matches")
+
+    with pytest.raises(FC27HTTPError):
+        sync_to_sheets.with_retries(blocked, "EA", delays=(0, 0))
+    assert len(calls) == 1
+    assert not sync_to_sheets.is_transient(RuntimeError("Unauthorized"))
+    assert sync_to_sheets.is_transient(RuntimeError("Lock timeout: another process was holding the lock"))
 
 
 def test_webhook_rejection_reported(env, monkeypatch, capsys):

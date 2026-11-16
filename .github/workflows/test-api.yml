@@ -4,9 +4,11 @@ on:
   workflow_dispatch:
 
   schedule:
-    # One schedule per playing hour, in UK time, so GMT and BST stay on the
-    # same clock. Minute 7 avoids the top-of-hour load where GitHub delays
-    # or drops runs. A run that starts late still imports.
+    # Two schedules per playing hour, in UK time, so GMT and BST stay on the
+    # same clock. Minutes 7 and 37 avoid the top-of-hour load where GitHub
+    # delays or drops runs; GitHub still skips many scheduled runs, and EA only
+    # returns the last 10 matches per type, so a second chance each hour
+    # matters. A run that starts late still imports, and repeats add nothing.
     - cron: '7 17 * * *'
       timezone: Europe/London
     - cron: '7 18 * * *'
@@ -26,6 +28,24 @@ on:
     - cron: '7 1 * * *'
       timezone: Europe/London
     - cron: '7 2 * * *'
+      timezone: Europe/London
+    - cron: '37 17 * * *'
+      timezone: Europe/London
+    - cron: '37 18 * * *'
+      timezone: Europe/London
+    - cron: '37 19 * * *'
+      timezone: Europe/London
+    - cron: '37 20 * * *'
+      timezone: Europe/London
+    - cron: '37 21 * * *'
+      timezone: Europe/London
+    - cron: '37 22 * * *'
+      timezone: Europe/London
+    - cron: '37 23 * * *'
+      timezone: Europe/London
+    - cron: '37 0 * * *'
+      timezone: Europe/London
+    - cron: '37 1 * * *'
       timezone: Europe/London
 
 concurrency:

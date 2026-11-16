@@ -127,7 +127,8 @@ function pandaNormalizeMatches_(rows) {
 }
 
 function pandaMetricFields_() {
-  const fields = new Set(["secondsPlayed", "rating", "passAttempts", "passesCompleted", "passesFailed"]);
+  const fields = new Set(["secondsPlayed", "rating", "passAttempts", "passesMade", "passesCompleted", "passesFailed",
+    "passesFailedDirectionUnknown"]);
   PandaStats.METRICS.forEach(m => PandaStats.requiredFields(m).forEach(f => fields.add(f)));
   ["Forward", "Backward", "Sideways"].forEach(d => {
     fields.add("passesCompleted" + d);

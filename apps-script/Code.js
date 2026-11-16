@@ -81,14 +81,17 @@ function doPost(e) {
       ["clubId", "matchId"]
     );
 
+    const playerStats = { upgraded: 0 };
     const playersAdded = saveRecords_(
       ss,
       "Player_Match_Stats",
       players,
-      ["clubId", "matchId", "playerId"]
+      ["clubId", "matchId", "playerId"],
+      { upgradeIncomplete: true, stats: playerStats }
     );
 
-    logSync_(ss, clubName, matchesAdded, playersAdded, "ok");
+    logSync_(ss, clubName, matchesAdded, playersAdded,
+      playerStats.upgraded ? "ok (" + playerStats.upgraded + " event logs completed)" : "ok");
 
     if (matchesAdded || playersAdded) {
       try {
@@ -100,7 +103,8 @@ function doPost(e) {
       success: true,
       club: clubName,
       matchesAdded: matchesAdded,
-      playersAdded: playersAdded
+      playersAdded: playersAdded,
+      playersUpgraded: playerStats.upgraded
     });
 
   } catch (error) {
@@ -171,7 +175,13 @@ function logSync_(ss, clubName, matchesAdded, playersAdded, status) {
 // SAVE RECORDS WITHOUT DUPLICATES
 // ==========================================
 
-function saveRecords_(ss, sheetName, records, keyFields) {
+// options.upgradeIncomplete: an existing V4 row whose event log was missing
+// or cut short ("missing"/"incomplete") is filled in from an incoming row for
+// the same key whose log is "complete". Rows that are already complete, and
+// legacy rows without eventCoverage, are never rewritten.
+function saveRecords_(ss, sheetName, records, keyFields, options) {
+
+  const opts = options || {};
 
   if (!records.length) return 0;
 
@@ -209,7 +219,8 @@ function saveRecords_(ss, sheetName, records, keyFields) {
     .setFontWeight("bold")
     .setBackground("#d9ead3");
 
-  const existingKeys = new Set();
+  const existingKeys = new Map();
+  const coverageIndex = headers.indexOf("eventCoverage");
 
   if (sheet.getLastRow() > 1) {
 
@@ -220,19 +231,26 @@ function saveRecords_(ss, sheetName, records, keyFields) {
       headers.length
     ).getValues();
 
-    existing.forEach(row => {
+    existing.forEach((row, i) => {
 
       const key = keyFields.map(field => {
         const index = headers.indexOf(field);
         return String(row[index]);
       }).join("|");
 
-      existingKeys.add(key);
+      if (!existingKeys.has(key)) {
+        existingKeys.set(key, {
+          rowNumber: i + 2,
+          values: row,
+          coverage: coverageIndex === -1 ? "" : String(row[coverageIndex])
+        });
+      }
 
     });
   }
 
   const rows = [];
+  const upgrades = [];
 
   records.forEach(record => {
 
@@ -240,9 +258,29 @@ function saveRecords_(ss, sheetName, records, keyFields) {
       field => String(record[field])
     ).join("|");
 
-    if (existingKeys.has(key)) return;
+    const found = existingKeys.get(key);
 
-    existingKeys.add(key);
+    if (found) {
+      if (
+        opts.upgradeIncomplete &&
+        found.rowNumber &&
+        (found.coverage === "incomplete" || found.coverage === "missing") &&
+        record.eventCoverage === "complete"
+      ) {
+        upgrades.push({
+          rowNumber: found.rowNumber,
+          values: headers.map((field, i) => {
+            if (record[field] !== undefined && record[field] !== null) return sheetValue_(field, record[field]);
+            const kept = found.values[i];
+            return typeof kept === "string" ? sheetValue_(field, kept) : kept;
+          })
+        });
+        found.coverage = "complete";
+      }
+      return;
+    }
+
+    existingKeys.set(key, { rowNumber: null, values: null, coverage: String(record.eventCoverage || "") });
 
     const row = headers.map(field => {
 
@@ -268,6 +306,11 @@ function saveRecords_(ss, sheetName, records, keyFields) {
       headers.length
     ).setValues(rows);
   }
+
+  upgrades.forEach(u => {
+    sheet.getRange(u.rowNumber, 1, 1, headers.length).setValues([u.values]);
+  });
+  if (opts.stats) opts.stats.upgraded = upgrades.length;
 
   // Text format for the column. This does not rewrite existing cells:
   // a number already in the column stays a number, and dedupe compares

@@ -144,13 +144,6 @@ var PandaStats = (function () {
     m("forwardPassesCompleted", "Forward passes completed", "passing", "count",
       { fields: ["passesCompletedForward"] }, "event", "high", true,
       "Completed passes played forward. A progression proxy, not metres gained."),
-    m("forwardPassAccuracy", "Forward-pass accuracy", "passing", "ratio",
-      { numerator: ["passesCompletedForward"],
-        denominator: ["passesCompletedForward", "passesFailedForward"] },
-      "event", "medium", true,
-      "Completed forward passes as a share of forward pass attempts.",
-      { minAttempts: 15, shrinkage: 8,
-        overlap: "Reads high: direction events cover ~98% of completed but only ~78% of failed passes (community research)." }),
     m("forwardPassShare", "Forward-pass share", "passing", "ratio",
       { numerator: ["passesCompletedForward", "passesFailedForward"],
         denominator: PASS_DIRECTION_FIELDS },
@@ -276,6 +269,10 @@ var PandaStats = (function () {
     m("aerialDuelsWonAttacking", "Attacking aerials won", "attacking", "count",
       { fields: ["aerialDuelsWonAttacking"] }, "event", "high", true,
       "Aerial duels won while attacking. No success rate: lost duels are not decoded."),
+    m("slidingTackles", "Sliding tackles won", "defending", "count",
+      { fields: ["slidingTacklesWon"] }, "event", "high", true,
+      "Sliding tackles that won the ball.",
+      { overlap: "Part of tackles won; never add the two." }),
     m("dangerousTackles", "Dangerous tackles", "discipline", "count",
       { fields: ["dangerousTackles"] }, "event", "high", false, "Dangerous tackles.",
       { display: "total" }),
@@ -304,6 +301,10 @@ var PandaStats = (function () {
       { fields: ["dribblesBeat", "dribblesSkillMoveBeat"] }, "event", "high", true,
       "Opponents beaten while dribbling, with or without a skill move.",
       { overlap: "The two counters do not overlap: skill-move beats are counted separately." }),
+    m("skillMoveBeats", "Skill-move beats", "possession", "count",
+      { fields: ["dribblesSkillMoveBeat"] }, "event", "high", true,
+      "Opponents beaten with a skill move. EA records successful skill-move beats only, not attempts.",
+      { overlap: "Part of players beaten; never add the two." }),
 
     // Decision-making & positioning (EA in-game feedback, not validated tactics)
     m("bestOptionTaken", "Best option taken", "decisions", "count",
@@ -791,6 +792,60 @@ var PandaStats = (function () {
     return { group, score: weighted / usedWeight, coverage, contributions };
   }
 
+  // Additive breakdown of pandaScore: for every component, its share of each
+  // match score averaged over scored matches. points sum to the score, and
+  // impact (points relative to a 50th-percentile performance) sums to
+  // score - 50.
+  function explainScore(playerRows, benchmarks) {
+    const scored = playerRows
+      .map(row => ({ row, s: scoreAppearance(row, benchmarks) }))
+      .filter(x => x.s && x.s.score !== null);
+    if (!scored.length) return null;
+    const n = scored.length;
+    const parts = {};
+    const groups = {};
+    scored.forEach(({ s }) => {
+      groups[s.group] = (groups[s.group] || 0) + 1;
+      const used = Object.values(s.contributions).reduce((a, c) => a + c.weight, 0);
+      Object.entries(s.contributions).forEach(([key, c]) => {
+        const p = parts[key] || (parts[key] = { key, points: 0, impact: 0, share: 0, pctTotal: 0, matches: 0, fallback: false, groups: {} });
+        p.points += c.percentile * c.weight / used / n;
+        p.impact += (c.percentile - 50) * c.weight / used / n;
+        p.share += c.weight / used / n;
+        p.pctTotal += c.percentile;
+        p.matches++;
+        p.groups[s.group] = c.weight;
+        if (c.fallback) p.fallback = true;
+      });
+    });
+    const components = Object.values(parts).map(p => {
+      const metric = getMetric(p.key);
+      return {
+        key: p.key,
+        label: metric.label,
+        type: metric.type,
+        higherIsBetter: metric.higherIsBetter,
+        points: p.points,
+        impact: p.impact,
+        share: p.share,
+        percentile: p.pctTotal / p.matches,
+        matches: p.matches,
+        weights: p.groups,
+        fallback: p.fallback
+      };
+    }).sort((a, b) => b.impact - a.impact);
+    const mainGroup = Object.entries(groups).sort((a, b) => b[1] - a[1])[0][0];
+    return {
+      score: components.reduce((a, c) => a + c.points, 0),
+      scoredAppearances: n,
+      groups,
+      mainGroup,
+      components,
+      strongest: components.filter(c => c.impact > 0).slice(0, 3),
+      weakest: components.filter(c => c.impact < 0).reverse().slice(0, 3)
+    };
+  }
+
   // Player score = mean of per-appearance role scores, so a player who
   // splits time between roles is judged against the right peers each match.
   function pandaScore(playerRows, benchmarks, options) {
@@ -848,6 +903,59 @@ var PandaStats = (function () {
         .map(x => Object.assign({}, x, { label: x.weaknessLabel })),
       metrics
     };
+  }
+
+  // ------------------------------------------------ directional passing
+
+  // EA's direction events cover almost every completed pass but only about
+  // three quarters of failed ones, so completed / (completed + failed) per
+  // direction reads high. Failed passes with no direction are measured
+  // against EA's named totals (passAttempts - passesMade) and shared across
+  // directions in proportion to the failures that were recorded. The result
+  // is an estimate and is labelled as one.
+  const PASS_DIRECTIONS = ["Forward", "Backward", "Sideways"];
+
+  function directionalPassing(rows) {
+    const totals = {};
+    PASS_DIRECTIONS.forEach(d => { totals[d] = { completed: 0, failed: 0 }; });
+    let unrecorded = 0;
+    let matches = 0;
+    rows.filter(r => isAppearance(r) && eventsUsable(r)).forEach(r => {
+      if (PASS_DIRECTIONS.some(d => toNumber(r["passesCompleted" + d]) === null || toNumber(r["passesFailed" + d]) === null)) return;
+      matches++;
+      let knownFailed = 0;
+      PASS_DIRECTIONS.forEach(d => {
+        totals[d].completed += toNumber(r["passesCompleted" + d]);
+        totals[d].failed += toNumber(r["passesFailed" + d]);
+        knownFailed += toNumber(r["passesFailed" + d]);
+      });
+      const attempts = toNumber(r.passAttempts);
+      const made = toNumber(r.passesMade);
+      const fromTotals = attempts !== null && made !== null ? attempts - made - knownFailed : null;
+      const noDirection = toNumber(r.passesFailedDirectionUnknown);
+      unrecorded += Math.max(0, fromTotals !== null ? fromTotals : (noDirection || 0));
+    });
+
+    const knownFailed = PASS_DIRECTIONS.reduce((a, d) => a + totals[d].failed, 0);
+    const knownAttempts = PASS_DIRECTIONS.reduce((a, d) => a + totals[d].completed + totals[d].failed, 0);
+    const directions = PASS_DIRECTIONS.map(d => {
+      const t = totals[d];
+      const attempts = t.completed + t.failed;
+      const basis = knownFailed ? t.failed / knownFailed : knownAttempts ? attempts / knownAttempts : 0;
+      const allocated = unrecorded * basis;
+      return {
+        direction: d,
+        completed: t.completed,
+        failed: t.failed,
+        attempts,
+        unrecordedFailed: allocated,
+        recordedAccuracy: attempts ? t.completed / attempts * 100 : null,
+        accuracy: attempts + allocated ? t.completed / (attempts + allocated) * 100 : null
+      };
+    });
+    const all = directions.reduce((a, d) => a + d.attempts + d.unrecordedFailed, 0);
+    directions.forEach(d => { d.share = all ? (d.attempts + d.unrecordedFailed) / all * 100 : null; });
+    return { matches, unrecordedFailed: unrecorded, directions };
   }
 
   // ------------------------------------------------------------- periods
@@ -971,6 +1079,7 @@ var PandaStats = (function () {
     toNumber,
     isAppearance,
     eventsUsable,
+    rowHasData,
     dedupeAppearances,
     getMetric,
     requiredFields,
@@ -985,7 +1094,9 @@ var PandaStats = (function () {
     percentile,
     buildBenchmarks,
     scoreAppearance,
+    explainScore,
     pandaScore,
+    directionalPassing,
     parseTimestamp,
     londonParts,
     weekKey,
