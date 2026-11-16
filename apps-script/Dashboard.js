@@ -13,8 +13,6 @@ const PANDA_DASHBOARD = {
     "413965": "Torquay"
   },
   cacheKey: "dashboard-v4",
-  cacheSeconds: 300,
-  cacheChunk: 90000,
   syncLogRows: 10
 };
 
@@ -34,14 +32,11 @@ function include_(name) {
 }
 
 // Read-only. Returns display data only: no EA player ids, no raw events.
+// Every page load reads the sheet. The script cache is not used, so a sync
+// that has already been written is visible on the next open.
 function getDashboardData() {
   try {
-    const cached = pandaCacheGet_();
-    if (cached) return cached;
-
-    const data = pandaBuildData_();
-    pandaCachePut_(data);
-    return data;
+    return pandaBuildData_();
   } catch (error) {
     console.error(error);
     return { ok: false, message: "PandaMetrics could not load the stats. Please try again shortly." };
@@ -206,39 +201,7 @@ function pandaSyncStatus_(ss) {
   return { lastSync: ok.length ? ok[0].at : null, recent };
 }
 
-// ------------------------------------------------------------------ cache
-
-// CacheService values are limited to 100 KB, so the payload is chunked.
-function pandaCacheGet_() {
-  const cache = CacheService.getScriptCache();
-  const count = Number(cache.get(PANDA_DASHBOARD.cacheKey + ":n"));
-  if (!count) return null;
-  let text = "";
-  for (let i = 0; i < count; i++) {
-    const part = cache.get(PANDA_DASHBOARD.cacheKey + ":" + i);
-    if (part === null) return null;
-    text += part;
-  }
-  try {
-    return JSON.parse(text);
-  } catch (_) {
-    return null;
-  }
-}
-
-function pandaCachePut_(data) {
-  if (!data.ok) return;
-  const cache = CacheService.getScriptCache();
-  const text = JSON.stringify(data);
-  const size = PANDA_DASHBOARD.cacheChunk;
-  const count = Math.ceil(text.length / size);
-  for (let i = 0; i < count; i++) {
-    cache.put(PANDA_DASHBOARD.cacheKey + ":" + i, text.slice(i * size, (i + 1) * size), PANDA_DASHBOARD.cacheSeconds);
-  }
-  cache.put(PANDA_DASHBOARD.cacheKey + ":n", String(count), PANDA_DASHBOARD.cacheSeconds);
-}
-
-// Called by the webhook after new rows are written.
+// Clears a payload cached by older deployments. The current dashboard does not write one.
 function invalidateDashboardCache_() {
   CacheService.getScriptCache().remove(PANDA_DASHBOARD.cacheKey + ":n");
 }

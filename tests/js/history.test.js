@@ -274,17 +274,11 @@ test("failed authorised imports are logged; unauthorised ones are not", () => {
   assert.match(String(log.data[log.data.length - 1][4]), /^error/);
 });
 
-test("dashboard cache is chunked and invalidated by new imports", () => {
-  const { ctx, env } = setup(V4_FILES);
+test("each dashboard load reads the sheet, including rows imported since the last load", () => {
+  const { ctx } = setup(V4_FILES);
   importAll(ctx, "v2");
-  vm.runInContext("PANDA_DASHBOARD.cacheChunk = 5000", ctx);
   const first = ctx.getDashboardData();
-  const count = Number(env.cache.get("dashboard-v4:n"));
-  assert.ok(count > 1, "payload should span several chunks");
-  assert.equal(JSON.stringify(ctx.getDashboardData()), JSON.stringify(first), "served from cache");
-
   importAll(ctx, "v4");
-  assert.equal(env.cache.has("dashboard-v4:n"), false, "import should invalidate the cache");
   const fresh = ctx.getDashboardData();
-  assert.ok(fresh.matches.length > first.matches.length, "new playoff matches visible after import");
+  assert.ok(fresh.matches.length > first.matches.length, "new playoff matches visible on the next load");
 });
