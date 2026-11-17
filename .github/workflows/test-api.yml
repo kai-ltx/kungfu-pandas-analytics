@@ -4,48 +4,12 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Two schedules per playing hour, in UK time, so GMT and BST stay on the
-    # same clock. Minutes 7 and 37 avoid the top-of-hour load where GitHub
-    # delays or drops runs; GitHub still skips many scheduled runs, and EA only
-    # returns the last 10 matches per type, so a second chance each hour
-    # matters. A run that starts late still imports, and repeats add nothing.
-    - cron: '7 17 * * *'
-      timezone: Europe/London
-    - cron: '7 18 * * *'
-      timezone: Europe/London
-    - cron: '7 19 * * *'
-      timezone: Europe/London
-    - cron: '7 20 * * *'
-      timezone: Europe/London
-    - cron: '7 21 * * *'
-      timezone: Europe/London
-    - cron: '7 22 * * *'
-      timezone: Europe/London
-    - cron: '7 23 * * *'
-      timezone: Europe/London
-    - cron: '7 0 * * *'
-      timezone: Europe/London
-    - cron: '7 1 * * *'
-      timezone: Europe/London
-    - cron: '7 2 * * *'
-      timezone: Europe/London
-    - cron: '37 17 * * *'
-      timezone: Europe/London
-    - cron: '37 18 * * *'
-      timezone: Europe/London
-    - cron: '37 19 * * *'
-      timezone: Europe/London
-    - cron: '37 20 * * *'
-      timezone: Europe/London
-    - cron: '37 21 * * *'
-      timezone: Europe/London
-    - cron: '37 22 * * *'
-      timezone: Europe/London
-    - cron: '37 23 * * *'
-      timezone: Europe/London
-    - cron: '37 0 * * *'
-      timezone: Europe/London
-    - cron: '37 1 * * *'
+    # Spare clock only. GitHub starts scheduled work when Actions is quiet and
+    # drops some of it, so a pile of crons arrived the next morning instead of
+    # during the match. sync-clock/ dispatches this workflow every 30 minutes
+    # from 17:00 to 02:59 UK time, and a dispatch starts straight away.
+    # https://docs.github.com/en/actions/how-tos/troubleshoot-workflows
+    - cron: '13 17-23,0-2 * * *'
       timezone: Europe/London
 
 concurrency:
@@ -65,18 +29,39 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Skip a scheduled run delivered outside playing hours
+        id: gate
+        run: |
+          python3 - << 'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          from sync_window import should_sync
+          hour = datetime.now(ZoneInfo("Europe/London")).hour
+          run = should_sync(os.environ["EVENT_NAME"], hour)
+          print(f"event={os.environ['EVENT_NAME']} london_hour={hour} run={run}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              handle.write("run=%s\n" % ("true" if run else "false"))
+          PY
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+
       - name: Set up Python
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.11'
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
         run: pip install -r requirements-dev.txt
 
       - name: Run data-integrity tests
+        if: steps.gate.outputs.run == 'true'
         run: python -m pytest -q
 
       - name: Sync all three clubs
+        if: steps.gate.outputs.run == 'true'
         env:
           GOOGLE_WEBHOOK_URL: ${{ secrets.GOOGLE_WEBHOOK_URL }}
           WEBHOOK_TOKEN: ${{ secrets.WEBHOOK_TOKEN }}

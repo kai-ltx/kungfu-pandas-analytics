@@ -53,6 +53,10 @@ A real sync needs a GitHub token able to dispatch the workflow.
 - Hiding the button for non-admins is not authorisation, because the server function would still be callable from the console (CWE-862 Missing Authorization, OWASP A01:2021).
 - Each call would consume GitHub Actions minutes and EA API requests (CWE-770 Allocation of Resources Without Limits or Throttling).
 
+### Sync clock
+
+Evening syncs are started by `sync-clock/`, a separate Apps Script project with no web app and no spreadsheet access. Its time trigger calls `eveningSyncTick_`, which dispatches the GitHub workflow. The dashboard cannot call it (CWE-749, CWE-862): the project is not deployed as a web app. `installSyncClock` is in the editor's Run menu so the owner can authorise it; it is not exposed by the dashboard. The token is a fine-grained GitHub token with Actions read and write on this one repository, stored only in the script property `GH_DISPATCH_TOKEN` (CWE-798). It is not the owner's GitHub login, and it is not in the dashboard project, so a bug in the public web app cannot read it.
+
 ### Recommended design (not implemented, awaiting approval)
 
 1. **Preferred, no code:** admins use GitHub's **Run workflow** button (`workflow_dispatch` is already enabled). GitHub authenticates the user and checks repository permissions.

@@ -59,7 +59,7 @@ Approved for production and released from commit `8e7017b` (`feature/v4.1-clubho
 | `AKfycbw0HTqAppZ3` (dashboard) | 13 | 14 | PandaMetrics V4.1 dashboard (rollback: v13) |
 | `AKfycbzVvMEVHG52` (head) | V4 code | V4.1 code | Follows every push |
 
-The manifest and OAuth scopes are unchanged. The webhook now completes rows whose event log was cut short (`eventCoverage` incomplete or missing) when a complete copy arrives; complete and legacy rows are never rewritten. The workflow adds a second run at minute 37 of each evening hour.
+The manifest and OAuth scopes are unchanged. The webhook now completes rows whose event log was cut short (`eventCoverage` incomplete or missing) when a complete copy arrives; complete and legacy rows are never rewritten. Evening syncs are started by the separate sync clock below; the workflow's own cron is only a spare.
 
 Checks after release: the dashboard loads anonymously with the V4.1 header, and a manual importer run on `main` succeeded for all three clubs with no duplicate rows.
 
@@ -71,6 +71,12 @@ clasp redeploy <dashboard id, AKfycbw0HTqAppZ3…> -V 13 -d "Rollback to V4 dash
 ```
 
 Then revert `main` to `3be3f10` so the V4 importer and schedule run again. Rows upgraded by V4.1 keep the same columns and stay readable by V4.
+
+## Sync clock
+
+`sync-clock/` is a standalone Apps Script project, not the dashboard. It has no web app. A 30-minute trigger dispatches the sync workflow from 17:00 to 02:59 UK time. The workflow cron at minute 13 of those hours is only a spare, and `sync_window.py` skips that spare when GitHub delivers it outside those hours.
+
+The dispatch token is the script property `GH_DISPATCH_TOKEN`: a fine-grained GitHub token for this repository with Actions read and write, nothing else. Set it in the script's Project Settings. Do not put it in the sheet, the repo, or chat. The dashboard project does not have this property.
 
 ## Isolated test environment
 

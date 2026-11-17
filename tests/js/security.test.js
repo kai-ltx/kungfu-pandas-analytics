@@ -48,6 +48,25 @@ test("GitHub Actions are pinned to full commit SHAs", () => {
   });
 });
 
+test("the sync workflow keeps a single London cron", () => {
+  const text = fs.readFileSync(path.join(APPS_SCRIPT, "..", ".github", "workflows", "test-api.yml"), "utf8");
+  assert.equal((text.match(/cron:/g) || []).length, 1);
+  assert.match(text, /timezone: Europe\/London/);
+  assert.match(text, /should_sync/);
+});
+
+test("the sync clock has no web app and no embedded token", () => {
+  const dir = path.join(APPS_SCRIPT, "..", "sync-clock");
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, "appsscript.json"), "utf8"));
+  assert.equal(manifest.webapp, undefined);
+  assert.ok(!JSON.stringify(manifest.oauthScopes).includes("spreadsheets"));
+  const source = fs.readFileSync(path.join(dir, "Code.js"), "utf8");
+  const allowed = new Set(["installSyncClock"]);
+  topLevelFunctions(source).forEach(name => assert.ok(name.endsWith("_") || allowed.has(name), name));
+  [/ghp_[A-Za-z0-9]{20,}/, /github_pat_[A-Za-z0-9_]{20,}/, /gho_[A-Za-z0-9_]{20,}/]
+    .forEach(pattern => assert.ok(!pattern.test(source)));
+});
+
 test("no secrets are embedded in Apps Script or HTML sources", () => {
   const patterns = [
     /ghp_[A-Za-z0-9]{20,}/, /github_pat_[A-Za-z0-9_]{20,}/,
