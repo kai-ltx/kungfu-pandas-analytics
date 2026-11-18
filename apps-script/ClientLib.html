@@ -1490,7 +1490,7 @@ var PandaInsights = (function () {
     }, fields || {});
   }
 
-  function awards(prepared, rows, table, previousTable) {
+  function awards(prepared, rows, table, previousTable, topTitle) {
     const pool = eligible(table);
     const allRows = prepared.rows;
     const byId = {};
@@ -1545,14 +1545,14 @@ var PandaInsights = (function () {
       return [agg.total + " " + label + " in " + agg.matchesWithData + " matches with data"];
     };
     const peer = key => p => [peerLine(roleAdjusted(p.rows, allRows, key))].filter(Boolean);
-    const scoreChange = p => [fmt(byId[p.id].score, 1) + " last period → " + fmt(p.score, 1) + " now"];
+    const scoreChange = p => [fmt(byId[p.id].score, 1) + " the period before → " + fmt(p.score, 1) + " now"];
     const weakest = p => {
       const w = p.weaknesses && p.weaknesses[0];
       return w ? ["Weakest area: " + w.label + " (better than " + Math.round(w.percentile) + "% of positional peers)"] : [];
     };
 
     const hallDefs = [
-      { key: "pandaOfWeek", title: previousTable ? "🐼 Panda of the Week" : "🐼 Panda of All Time", description: "Highest position-adjusted Panda Score.",
+      { key: "pandaOfWeek", title: topTitle || (previousTable ? "🐼 Panda of the Week" : "🐼 Panda of All Time"), description: "Highest position-adjusted Panda Score.",
         valueOf: p => p.score, format: v => fmt(v, 0), detail: p => [matchesLine(p)] },
       { key: "goldenBoot", title: "👟 Golden Boot", description: "Most goals.",
         valueOf: totalOf("goals"), format: v => String(v),
@@ -2085,8 +2085,10 @@ var PandaInsights = (function () {
 
   const WEEKLY_MIN_MATCHES = 2;
 
+  // The latest complete week for the selected club and position. The period
+  // filter is ignored: the week itself is the period.
   function weeklyBamboo(prepared, state, now) {
-    const base = Object.assign({}, state, { period: "all", group: "all" });
+    const base = Object.assign({}, state, { period: "all" });
     const filters = filtersFor(base, now);
     const rows = S.filterRows(prepared.rows, filters);
     const matches = filteredMatches(prepared, filters);
@@ -2124,7 +2126,7 @@ var PandaInsights = (function () {
         losses: weekMatches.filter(m => m.result === "loss").length
       },
       clubs: clubSummaries(prepared, weekMatches),
-      awards: awards(prepared, weekRows, table, prevTable),
+      awards: awards(prepared, weekRows, table, prevTable, "🐼 Panda of the Week"),
       personalities: personalities(prepared, weekRows, WEEKLY_MIN_MATCHES),
       minMatches: WEEKLY_MIN_MATCHES,
       coverage: coverage(weekRows)
@@ -2512,6 +2514,31 @@ var PandaInsights = (function () {
 
   // ------------------------------------------------------------------ build
 
+  const PERIOD_AWARD_TITLES = {
+    all: "🐼 Panda of All Time",
+    last28: "🐼 Panda of the Last 28 Days",
+    thisWeek: "🐼 Panda of the Week",
+    lastWeek: "🐼 Panda of the Week",
+    thisMonth: "🐼 Panda of the Month",
+    lastMonth: "🐼 Panda of the Month"
+  };
+
+  // The stretch just before the selected period, for Most Improved and
+  // Biggest Decline. "All recorded" has nothing before it.
+  function previousRange(key, now) {
+    if (key === "last28") {
+      return { from: new Date(now.getTime() - 56 * 86400000), to: new Date(now.getTime() - 28 * 86400000) };
+    }
+    if (!["thisWeek", "lastWeek", "thisMonth", "lastMonth"].includes(key)) return null;
+    const period = key.endsWith("Month") ? "month" : "week";
+    const bounds = S.periodBounds(S.previousPeriodKey(periodRange(key, now).key, period), period);
+    return { from: bounds.start, to: bounds.end };
+  }
+
+  function awardMinMatches(st) {
+    return st.period === "thisWeek" || st.period === "lastWeek" ? WEEKLY_MIN_MATCHES : st.minMatches;
+  }
+
   function build(prepared, state, now, selectedPlayer) {
     const st = Object.assign({}, DEFAULT_STATE, state);
     const filters = filtersFor(st, now);
@@ -2520,14 +2547,18 @@ var PandaInsights = (function () {
     const players = S.groupByPlayer(rows);
     const table = scoreTable(prepared, rows, st.minMatches);
 
-    // All-time awards and personalities follow the club filter only.
-    const clubRows = S.filterRows(prepared.rows, filtersFor(Object.assign({}, st, { period: "all", group: "all" }), now));
-    const allTimeTable = scoreTable(prepared, clubRows, st.minMatches);
-    const allTimePersonalities = personalities(prepared, clubRows, st.minMatches);
+    // Awards, personalities and badges follow all three filters.
+    const awardMin = awardMinMatches(st);
+    const awardTable = awardMin === st.minMatches ? table : scoreTable(prepared, rows, awardMin);
+    const before = previousRange(st.period, now);
+    const previousTable = before
+      ? scoreTable(prepared, S.filterRows(prepared.rows, Object.assign({}, filters, before)), awardMin)
+      : null;
+    const periodPersonalities = personalities(prepared, rows, awardMin);
     // Form ignores the period filter: "last five" means the last five.
     const formRows = S.filterRows(prepared.rows, Object.assign({}, filters, { from: null, to: null }));
     const bamboo = weeklyBamboo(prepared, st, now);
-    const context = { table, formRows, badges: allTimePersonalities.badges, now };
+    const context = { table, formRows, badges: periodPersonalities.badges, now };
 
     return {
       state: st,
@@ -2551,7 +2582,10 @@ var PandaInsights = (function () {
       evolution: evolution(prepared, rows, st, now),
       lab: lab(prepared, rows, selectedPlayer, st, context),
       squad: squad(prepared, rows, st, context),
-      awards: Object.assign(awards(prepared, clubRows, allTimeTable, null), { personalities: allTimePersonalities })
+      awards: Object.assign(
+        awards(prepared, rows, awardTable, previousTable, PERIOD_AWARD_TITLES[st.period]),
+        { personalities: periodPersonalities, minMatches: awardMin }
+      )
     };
   }
 
@@ -2640,12 +2674,12 @@ var PandaInsights = (function () {
 
   // Which global filters each section uses, shown under the filters.
   const FILTER_NOTES = {
-    overview: "Club cards and recent matches follow the filters. Weekly winners use the last complete week for the selected club.",
+    overview: "Everything follows the filters. The noticeboard is the last complete week for the selected club and position, so it ignores the period.",
     rankings: "",
     evolution: "Form (last 5 vs previous 5) ignores the period filter.",
-    lab: "Form ignores the period filter.",
-    squad: "Form and the build advisor use every match for the selected club and position.",
-    awards: "Awards follow the club filter only: Weekly Bamboo is the last complete week, All-time is everything recorded."
+    lab: "Badges follow the filters. Form ignores the period filter.",
+    squad: "Badges follow the filters. Form and the build advisor use every match for the selected club and position.",
+    awards: "Selected period follows all three filters. Weekly Bamboo is the noticeboard's week for the selected club and position."
   };
 
   const state = Object.assign({}, I.DEFAULT_STATE, {
@@ -2842,6 +2876,7 @@ var PandaInsights = (function () {
     document.querySelectorAll("[data-filter]").forEach(el => {
       el.onchange = () => {
         state[el.dataset.filter] = el.value;
+        if (el.dataset.filter === "period" && state.view === "awards") state.awardsScope = "period";
         render();
       };
     });
@@ -2941,7 +2976,7 @@ var PandaInsights = (function () {
           <h2>Week of ${dateLabel(bamboo.start)} – ${dateLabel(bamboo.end)}</h2>
           <p>${bamboo.matches} official matches · <b>${bamboo.record.wins}W ${bamboo.record.draws}D ${bamboo.record.losses}L</b> · weekly winners need ${bamboo.minMatches}+ matches that week</p>
           <div class="mini-awards">${headline.map(miniAward).join("")}</div>
-          <button class="link" data-goto="awards">Every weekly award and personality →</button>
+          <button class="link" data-goto="awards" data-goto-scope="week">Every weekly award and personality →</button>
         ` : "<p>No complete week with official matches yet. Weekly winners appear after the first full Monday–Sunday week.</p>"}
       </div>
 
@@ -3310,21 +3345,35 @@ var PandaInsights = (function () {
 
   // --------------------------------------------------------------- awards
 
+  function filterLabel() {
+    const club = state.club === "all" ? "All clubs" : prepared.clubs[state.club] || state.club;
+    const period = (I.PERIODS.find(p => p.key === state.period) || I.PERIODS[0]).label;
+    const group = state.group === "all" ? "All positions" : S.GROUP_LABELS[state.group] + "s";
+    return [club, period, group].join(" · ");
+  }
+
   function renderAwards() {
     const week = model.overview.bamboo;
-    const useWeek = state.awardsScope === "week" && week.week;
+    const useWeek = state.awardsScope === "week" && !!week.week;
     const set = useWeek ? week.awards : model.awards;
     const persona = useWeek ? week.personalities : model.awards.personalities;
+    const club = state.club === "all" ? "All clubs" : prepared.clubs[state.club] || state.club;
+    const group = state.group === "all" ? "All positions" : S.GROUP_LABELS[state.group] + "s";
     const scopeLabel = useWeek
-      ? `Weekly Bamboo: ${dateLabel(week.start)} – ${dateLabel(week.end)} · ${week.minMatches}+ matches that week to qualify`
-      : `All-time · ${state.minMatches}+ scored matches to qualify`;
+      ? `Weekly Bamboo, the same week as the Panda Den noticeboard: ${dateLabel(week.start)} – ${dateLabel(week.end)} · ${club} · ${group} · ${week.minMatches}+ matches that week to qualify`
+      : `${filterLabel()} · ${model.awards.minMatches}+ scored matches to qualify`;
+    const noWeek = state.awardsScope === "week" && !week.week
+      ? `<p class="small muted">No complete week with official matches for ${esc(club)} · ${esc(group)} yet, so these are the selected-period awards.</p>`
+      : "";
+    const improvedNote = set.comparesPrevious ? "" : " Most Improved and Biggest Decline need a week, month or last-28-days period to compare with.";
     $("awards").innerHTML = `
       <h2>🌟 Awards</h2>
       <div class="buttons">
-        <button data-scope="week" class="${state.awardsScope === "week" ? "active" : ""}" ${week.week ? "" : "disabled"}>🎋 Weekly Bamboo</button>
-        <button data-scope="alltime" class="${state.awardsScope !== "week" ? "active" : ""}">🏛️ All-time</button>
+        <button data-scope="week" class="${useWeek ? "active" : ""}" ${week.week ? "" : "disabled"}>🎋 Weekly Bamboo</button>
+        <button data-scope="period" class="${useWeek ? "" : "active"}">📅 Selected period</button>
       </div>
-      <p>${esc(scopeLabel)} · ${set.eligible} eligible players. Awards compare players with others in the same positions where it matters.${useWeek ? "" : " Most Improved and Biggest Decline are weekly only."}</p>
+      ${noWeek}
+      <p>${esc(scopeLabel)} · ${set.eligible} eligible players. Awards compare players with others in the same positions where it matters.${improvedNote}</p>
       <h3>🏛️ Hall of Pandas</h3>
       <div class="award-grid">${set.hall.map(awardCard).join("")}</div>
       <h3>💀 Wall of Shame</h3>
@@ -3341,7 +3390,6 @@ var PandaInsights = (function () {
 
   function render() {
     model = I.build(prepared, state, new Date(), state.player);
-    if (state.awardsScope === "week" && !model.overview.bamboo.week) state.awardsScope = "alltime";
     renderNav();
     renderFilters();
     const renderers = { overview: renderOverview, rankings: renderRankings, evolution: renderEvolution,
@@ -3359,7 +3407,12 @@ var PandaInsights = (function () {
       b.onclick = () => { state.player = b.dataset.explain; state.view = "lab"; state.scrollTo = "explain"; render(); };
     });
     document.querySelectorAll("[data-goto]").forEach(b => {
-      b.onclick = () => { state.view = b.dataset.goto; render(); window.scrollTo({ top: 0 }); };
+      b.onclick = () => {
+        state.view = b.dataset.goto;
+        if (b.dataset.gotoScope) state.awardsScope = b.dataset.gotoScope;
+        render();
+        window.scrollTo({ top: 0 });
+      };
     });
     $("updated").textContent = loadedAt ? "Data loaded " + dateLabel(loadedAt, true) : "";
     if (state.scrollTo && $(state.scrollTo)) {

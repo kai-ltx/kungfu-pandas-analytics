@@ -22,12 +22,12 @@
 
   // Which global filters each section uses, shown under the filters.
   const FILTER_NOTES = {
-    overview: "Club cards and recent matches follow the filters. Weekly winners use the last complete week for the selected club.",
+    overview: "Everything follows the filters. The noticeboard is the last complete week for the selected club and position, so it ignores the period.",
     rankings: "",
     evolution: "Form (last 5 vs previous 5) ignores the period filter.",
-    lab: "Form ignores the period filter.",
-    squad: "Form and the build advisor use every match for the selected club and position.",
-    awards: "Awards follow the club filter only: Weekly Bamboo is the last complete week, All-time is everything recorded."
+    lab: "Badges follow the filters. Form ignores the period filter.",
+    squad: "Badges follow the filters. Form and the build advisor use every match for the selected club and position.",
+    awards: "Selected period follows all three filters. Weekly Bamboo is the noticeboard's week for the selected club and position."
   };
 
   const state = Object.assign({}, I.DEFAULT_STATE, {
@@ -224,6 +224,7 @@
     document.querySelectorAll("[data-filter]").forEach(el => {
       el.onchange = () => {
         state[el.dataset.filter] = el.value;
+        if (el.dataset.filter === "period" && state.view === "awards") state.awardsScope = "period";
         render();
       };
     });
@@ -323,7 +324,7 @@
           <h2>Week of ${dateLabel(bamboo.start)} – ${dateLabel(bamboo.end)}</h2>
           <p>${bamboo.matches} official matches · <b>${bamboo.record.wins}W ${bamboo.record.draws}D ${bamboo.record.losses}L</b> · weekly winners need ${bamboo.minMatches}+ matches that week</p>
           <div class="mini-awards">${headline.map(miniAward).join("")}</div>
-          <button class="link" data-goto="awards">Every weekly award and personality →</button>
+          <button class="link" data-goto="awards" data-goto-scope="week">Every weekly award and personality →</button>
         ` : "<p>No complete week with official matches yet. Weekly winners appear after the first full Monday–Sunday week.</p>"}
       </div>
 
@@ -692,21 +693,35 @@
 
   // --------------------------------------------------------------- awards
 
+  function filterLabel() {
+    const club = state.club === "all" ? "All clubs" : prepared.clubs[state.club] || state.club;
+    const period = (I.PERIODS.find(p => p.key === state.period) || I.PERIODS[0]).label;
+    const group = state.group === "all" ? "All positions" : S.GROUP_LABELS[state.group] + "s";
+    return [club, period, group].join(" · ");
+  }
+
   function renderAwards() {
     const week = model.overview.bamboo;
-    const useWeek = state.awardsScope === "week" && week.week;
+    const useWeek = state.awardsScope === "week" && !!week.week;
     const set = useWeek ? week.awards : model.awards;
     const persona = useWeek ? week.personalities : model.awards.personalities;
+    const club = state.club === "all" ? "All clubs" : prepared.clubs[state.club] || state.club;
+    const group = state.group === "all" ? "All positions" : S.GROUP_LABELS[state.group] + "s";
     const scopeLabel = useWeek
-      ? `Weekly Bamboo: ${dateLabel(week.start)} – ${dateLabel(week.end)} · ${week.minMatches}+ matches that week to qualify`
-      : `All-time · ${state.minMatches}+ scored matches to qualify`;
+      ? `Weekly Bamboo, the same week as the Panda Den noticeboard: ${dateLabel(week.start)} – ${dateLabel(week.end)} · ${club} · ${group} · ${week.minMatches}+ matches that week to qualify`
+      : `${filterLabel()} · ${model.awards.minMatches}+ scored matches to qualify`;
+    const noWeek = state.awardsScope === "week" && !week.week
+      ? `<p class="small muted">No complete week with official matches for ${esc(club)} · ${esc(group)} yet, so these are the selected-period awards.</p>`
+      : "";
+    const improvedNote = set.comparesPrevious ? "" : " Most Improved and Biggest Decline need a week, month or last-28-days period to compare with.";
     $("awards").innerHTML = `
       <h2>🌟 Awards</h2>
       <div class="buttons">
-        <button data-scope="week" class="${state.awardsScope === "week" ? "active" : ""}" ${week.week ? "" : "disabled"}>🎋 Weekly Bamboo</button>
-        <button data-scope="alltime" class="${state.awardsScope !== "week" ? "active" : ""}">🏛️ All-time</button>
+        <button data-scope="week" class="${useWeek ? "active" : ""}" ${week.week ? "" : "disabled"}>🎋 Weekly Bamboo</button>
+        <button data-scope="period" class="${useWeek ? "" : "active"}">📅 Selected period</button>
       </div>
-      <p>${esc(scopeLabel)} · ${set.eligible} eligible players. Awards compare players with others in the same positions where it matters.${useWeek ? "" : " Most Improved and Biggest Decline are weekly only."}</p>
+      ${noWeek}
+      <p>${esc(scopeLabel)} · ${set.eligible} eligible players. Awards compare players with others in the same positions where it matters.${improvedNote}</p>
       <h3>🏛️ Hall of Pandas</h3>
       <div class="award-grid">${set.hall.map(awardCard).join("")}</div>
       <h3>💀 Wall of Shame</h3>
@@ -723,7 +738,6 @@
 
   function render() {
     model = I.build(prepared, state, new Date(), state.player);
-    if (state.awardsScope === "week" && !model.overview.bamboo.week) state.awardsScope = "alltime";
     renderNav();
     renderFilters();
     const renderers = { overview: renderOverview, rankings: renderRankings, evolution: renderEvolution,
@@ -741,7 +755,12 @@
       b.onclick = () => { state.player = b.dataset.explain; state.view = "lab"; state.scrollTo = "explain"; render(); };
     });
     document.querySelectorAll("[data-goto]").forEach(b => {
-      b.onclick = () => { state.view = b.dataset.goto; render(); window.scrollTo({ top: 0 }); };
+      b.onclick = () => {
+        state.view = b.dataset.goto;
+        if (b.dataset.gotoScope) state.awardsScope = b.dataset.gotoScope;
+        render();
+        window.scrollTo({ top: 0 });
+      };
     });
     $("updated").textContent = loadedAt ? "Data loaded " + dateLabel(loadedAt, true) : "";
     if (state.scrollTo && $(state.scrollTo)) {

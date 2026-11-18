@@ -322,14 +322,63 @@ test("awards are not duplicated between the Wall of Shame and personalities", ()
   });
 });
 
-test("all-time awards ignore the period and position filters but follow the club", () => {
-  const filtered = I.build(prepared, { minMatches: 3, period: "lastWeek", group: "ATT" }, NOW, null);
-  const winners = m => m.awards.hall.concat(m.awards.shame).map(a => a.key + ":" + (a.winner && a.winner.id));
-  assert.deepEqual(winners(filtered), winners(model41));
-  assert.ok(!model41.awards.hall.some(a => a.key === "mostImproved"), "Most Improved is weekly only");
+test("selected-period awards follow the club, period and position filters", () => {
+  const winners = m => m.awards.hall.concat(m.awards.shame, m.awards.personalities.awards)
+    .map(a => a.key + ":" + (a.winner && a.winner.id)).join(",");
+
+  const attackers = I.build(prepared, { minMatches: 3, group: "ATT" }, NOW, null);
+  const attackerIds = new Set(attackers.rankings.scores.qualified.map(t => t.id));
+  attackers.awards.hall.concat(attackers.awards.shame).forEach(a => {
+    if (a.winner) assert.ok(attackerIds.has(a.winner.id), a.key);
+  });
+  assert.notEqual(winners(attackers), winners(model41), "position filter changes awards");
+
+  const lastWeek = I.build(prepared, { minMatches: 3, period: "lastWeek" }, NOW, null);
+  assert.equal(lastWeek.awards.minMatches, 2, "a one-week period uses the weekly minimum");
+  assert.equal(lastWeek.awards.hall.find(a => a.key === "pandaOfWeek").title, "🐼 Panda of the Week");
+  assert.ok(lastWeek.awards.comparesPrevious);
+  assert.ok(lastWeek.awards.hall.some(a => a.key === "mostImproved"));
+  assert.notEqual(winners(lastWeek), winners(model41), "period filter changes awards");
+
+  const club = Object.keys(CLUBS).find(id => prepared.rows.some(r => String(r.clubId) === id));
+  const oneClub = I.build(prepared, { minMatches: 3, club }, NOW, null);
+  const clubIds = new Set(prepared.rows.filter(r => String(r.clubId) === club).map(r => String(r.playerId)));
+  oneClub.awards.hall.concat(oneClub.awards.shame).forEach(a => {
+    if (a.winner) assert.ok(clubIds.has(a.winner.id), a.key);
+  });
+
+  assert.ok(!model41.awards.comparesPrevious);
+  assert.ok(!model41.awards.hall.some(a => a.key === "mostImproved"), "All recorded has nothing before it");
+  assert.equal(model41.awards.hall.find(a => a.key === "pandaOfWeek").title, "🐼 Panda of All Time");
+});
+
+test("Weekly Bamboo is the noticeboard week and follows club and position", () => {
   const bamboo = model41.overview.bamboo;
   assert.ok(bamboo.awards.hall.some(a => a.key === "mostImproved"));
-  assert.ok(bamboo.personalities.awards.length === 12);
+  assert.equal(bamboo.personalities.awards.length, 12);
+  assert.equal(bamboo.awards.hall.find(a => a.key === "pandaOfWeek").title, "🐼 Panda of the Week");
+
+  const funny = model41.overview.clubhouse.funny.map(a => a.key + ":" + a.winner.id);
+  const weekly = bamboo.personalities.awards.filter(a => a.winner).map(a => a.key + ":" + a.winner.id);
+  funny.forEach(f => assert.ok(weekly.includes(f), "noticeboard shows the Weekly Bamboo winners"));
+
+  const periodChanged = I.build(prepared, { minMatches: 3, period: "lastMonth" }, NOW, null).overview.bamboo;
+  assert.equal(periodChanged.week, bamboo.week, "the week itself is the period");
+
+  const attackers = I.build(prepared, { minMatches: 3, group: "ATT" }, NOW, null).overview.bamboo;
+  const top = attackers.awards.hall.find(a => a.key === "pandaOfWeek");
+  if (top.winner) {
+    const weekRows = prepared.rows.filter(r => String(r.playerId) === top.winner.id && S.positionGroup(r) === "ATT");
+    assert.ok(weekRows.length > 0, "attacker filter picks an attacker");
+  }
+  assert.ok(attackers.coverage.appearances <= bamboo.coverage.appearances);
+});
+
+test("player badges follow the filters", () => {
+  const attackers = I.build(prepared, { minMatches: 3, group: "ATT" }, NOW, null);
+  const allBadges = JSON.stringify(model41.squad.map(c => c.badges.map(b => b.key)));
+  const attackerBadges = JSON.stringify(attackers.squad.map(c => c.badges.map(b => b.key)));
+  assert.notEqual(attackerBadges, allBadges);
 });
 
 test("form compares the last five matches with the five before, never overlapping", () => {

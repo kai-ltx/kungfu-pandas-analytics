@@ -374,7 +374,7 @@ var PandaInsights = (function () {
     }, fields || {});
   }
 
-  function awards(prepared, rows, table, previousTable) {
+  function awards(prepared, rows, table, previousTable, topTitle) {
     const pool = eligible(table);
     const allRows = prepared.rows;
     const byId = {};
@@ -429,14 +429,14 @@ var PandaInsights = (function () {
       return [agg.total + " " + label + " in " + agg.matchesWithData + " matches with data"];
     };
     const peer = key => p => [peerLine(roleAdjusted(p.rows, allRows, key))].filter(Boolean);
-    const scoreChange = p => [fmt(byId[p.id].score, 1) + " last period → " + fmt(p.score, 1) + " now"];
+    const scoreChange = p => [fmt(byId[p.id].score, 1) + " the period before → " + fmt(p.score, 1) + " now"];
     const weakest = p => {
       const w = p.weaknesses && p.weaknesses[0];
       return w ? ["Weakest area: " + w.label + " (better than " + Math.round(w.percentile) + "% of positional peers)"] : [];
     };
 
     const hallDefs = [
-      { key: "pandaOfWeek", title: previousTable ? "🐼 Panda of the Week" : "🐼 Panda of All Time", description: "Highest position-adjusted Panda Score.",
+      { key: "pandaOfWeek", title: topTitle || (previousTable ? "🐼 Panda of the Week" : "🐼 Panda of All Time"), description: "Highest position-adjusted Panda Score.",
         valueOf: p => p.score, format: v => fmt(v, 0), detail: p => [matchesLine(p)] },
       { key: "goldenBoot", title: "👟 Golden Boot", description: "Most goals.",
         valueOf: totalOf("goals"), format: v => String(v),
@@ -969,8 +969,10 @@ var PandaInsights = (function () {
 
   const WEEKLY_MIN_MATCHES = 2;
 
+  // The latest complete week for the selected club and position. The period
+  // filter is ignored: the week itself is the period.
   function weeklyBamboo(prepared, state, now) {
-    const base = Object.assign({}, state, { period: "all", group: "all" });
+    const base = Object.assign({}, state, { period: "all" });
     const filters = filtersFor(base, now);
     const rows = S.filterRows(prepared.rows, filters);
     const matches = filteredMatches(prepared, filters);
@@ -1008,7 +1010,7 @@ var PandaInsights = (function () {
         losses: weekMatches.filter(m => m.result === "loss").length
       },
       clubs: clubSummaries(prepared, weekMatches),
-      awards: awards(prepared, weekRows, table, prevTable),
+      awards: awards(prepared, weekRows, table, prevTable, "🐼 Panda of the Week"),
       personalities: personalities(prepared, weekRows, WEEKLY_MIN_MATCHES),
       minMatches: WEEKLY_MIN_MATCHES,
       coverage: coverage(weekRows)
@@ -1396,6 +1398,31 @@ var PandaInsights = (function () {
 
   // ------------------------------------------------------------------ build
 
+  const PERIOD_AWARD_TITLES = {
+    all: "🐼 Panda of All Time",
+    last28: "🐼 Panda of the Last 28 Days",
+    thisWeek: "🐼 Panda of the Week",
+    lastWeek: "🐼 Panda of the Week",
+    thisMonth: "🐼 Panda of the Month",
+    lastMonth: "🐼 Panda of the Month"
+  };
+
+  // The stretch just before the selected period, for Most Improved and
+  // Biggest Decline. "All recorded" has nothing before it.
+  function previousRange(key, now) {
+    if (key === "last28") {
+      return { from: new Date(now.getTime() - 56 * 86400000), to: new Date(now.getTime() - 28 * 86400000) };
+    }
+    if (!["thisWeek", "lastWeek", "thisMonth", "lastMonth"].includes(key)) return null;
+    const period = key.endsWith("Month") ? "month" : "week";
+    const bounds = S.periodBounds(S.previousPeriodKey(periodRange(key, now).key, period), period);
+    return { from: bounds.start, to: bounds.end };
+  }
+
+  function awardMinMatches(st) {
+    return st.period === "thisWeek" || st.period === "lastWeek" ? WEEKLY_MIN_MATCHES : st.minMatches;
+  }
+
   function build(prepared, state, now, selectedPlayer) {
     const st = Object.assign({}, DEFAULT_STATE, state);
     const filters = filtersFor(st, now);
@@ -1404,14 +1431,18 @@ var PandaInsights = (function () {
     const players = S.groupByPlayer(rows);
     const table = scoreTable(prepared, rows, st.minMatches);
 
-    // All-time awards and personalities follow the club filter only.
-    const clubRows = S.filterRows(prepared.rows, filtersFor(Object.assign({}, st, { period: "all", group: "all" }), now));
-    const allTimeTable = scoreTable(prepared, clubRows, st.minMatches);
-    const allTimePersonalities = personalities(prepared, clubRows, st.minMatches);
+    // Awards, personalities and badges follow all three filters.
+    const awardMin = awardMinMatches(st);
+    const awardTable = awardMin === st.minMatches ? table : scoreTable(prepared, rows, awardMin);
+    const before = previousRange(st.period, now);
+    const previousTable = before
+      ? scoreTable(prepared, S.filterRows(prepared.rows, Object.assign({}, filters, before)), awardMin)
+      : null;
+    const periodPersonalities = personalities(prepared, rows, awardMin);
     // Form ignores the period filter: "last five" means the last five.
     const formRows = S.filterRows(prepared.rows, Object.assign({}, filters, { from: null, to: null }));
     const bamboo = weeklyBamboo(prepared, st, now);
-    const context = { table, formRows, badges: allTimePersonalities.badges, now };
+    const context = { table, formRows, badges: periodPersonalities.badges, now };
 
     return {
       state: st,
@@ -1435,7 +1466,10 @@ var PandaInsights = (function () {
       evolution: evolution(prepared, rows, st, now),
       lab: lab(prepared, rows, selectedPlayer, st, context),
       squad: squad(prepared, rows, st, context),
-      awards: Object.assign(awards(prepared, clubRows, allTimeTable, null), { personalities: allTimePersonalities })
+      awards: Object.assign(
+        awards(prepared, rows, awardTable, previousTable, PERIOD_AWARD_TITLES[st.period]),
+        { personalities: periodPersonalities, minMatches: awardMin }
+      )
     };
   }
 
